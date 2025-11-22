@@ -12,18 +12,18 @@ export const BASE_CHAIN_ID = 8453;
 export const BASE_CHAIN_NAME = 'base';
 
 // API endpoints
-// Note: Actual endpoints need to be discovered from API docs
-// Common patterns to try:
-// - /v1/markets
-// - /core/v1/markets  
-// - /api/v1/markets
-// - /markets
+// Based on API documentation at https://api-v2.pendle.finance/core/docs
+// Confirmed working endpoints:
 export const PENDLE_ENDPOINTS = {
-  // These will be updated once we confirm the correct paths
-  MARKETS: '/v1/markets', // Try different variations
-  POOLS: '/v1/pools',
-  TOKENS: '/v1/tokens',
-  // Add more endpoints as we discover them
+  // ✅ Confirmed: Returns active markets for a specific chain
+  // Format: /v1/{chainId}/markets/active
+  MARKETS_ACTIVE: '/v1/{chainId}/markets/active',
+  // ✅ Confirmed working: Returns all markets across all chains
+  MARKETS_ALL: '/v1/markets/all',
+  // ✅ Confirmed working: Returns all assets/tokens
+  ASSETS_ALL: '/v1/assets/all',
+  // Market-specific data endpoint
+  MARKETS_DATA: '/v2/{chainId}/markets/{address}/data',
 } as const;
 
 // Cache configuration

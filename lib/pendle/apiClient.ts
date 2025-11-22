@@ -89,52 +89,81 @@ export function clearCache(cacheKey?: string): void {
 
 /**
  * Fetch markets from Pendle API
+ * Uses /v1/{chainId}/markets/active which returns active markets for a specific chain
+ * Response structure: { markets: MarketInfo[] }
  */
 export async function fetchMarkets(chainId: number = 8453) {
   const cacheKey = `markets-${chainId}`;
-  return fetchFromPendleAPI(PENDLE_ENDPOINTS.MARKETS, {
+  
+  // Build endpoint with chainId in path
+  const endpoint = PENDLE_ENDPOINTS.MARKETS_ACTIVE.replace('{chainId}', String(chainId));
+  
+  // Fetch markets for the specific chain
+  const response = await fetchFromPendleAPI<{ markets: any[] }>(endpoint, {
     cacheKey,
     cacheDuration: CACHE_DURATION.MARKETS,
-    params: { chainId },
   });
+  
+  // Extract markets array from response
+  const markets = response?.markets || (Array.isArray(response) ? response : []);
+  
+  console.log(`✅ Fetched ${markets.length} active markets for chain ${chainId}`);
+  return markets;
 }
 
 /**
  * Fetch pools from Pendle API
+ * Note: Pendle API may not have a separate pools endpoint
+ * Pool data might be included in markets response
  */
 export async function fetchPools(
   chainId: number = 8453,
   marketAddress?: string
 ) {
-  const params: Record<string, string | number> = { chainId };
+  // Try to get pool data from markets or specific market endpoint
   if (marketAddress) {
-    params.market = marketAddress;
+    const cacheKey = `pool-${chainId}-${marketAddress}`;
+    try {
+      // Try market data endpoint
+      const endpoint = `/v2/${chainId}/markets/${marketAddress}/data`;
+      return await fetchFromPendleAPI(endpoint, {
+        cacheKey,
+        cacheDuration: CACHE_DURATION.POOLS,
+      });
+    } catch (error) {
+      console.warn('Could not fetch specific pool data:', error);
+    }
   }
-
-  const cacheKey = `pools-${chainId}-${marketAddress || 'all'}`;
-  return fetchFromPendleAPI(PENDLE_ENDPOINTS.POOLS, {
-    cacheKey,
-    cacheDuration: CACHE_DURATION.POOLS,
-    params,
-  });
+  
+  // If no specific market, return null (pools might be in markets response)
+  return null;
 }
 
 /**
  * Fetch token information
+ * Note: Token info might be available from /v1/assets/all
  */
 export async function fetchTokenInfo(
   tokenAddress: string,
   chainId: number = 8453
 ) {
   const cacheKey = `token-${tokenAddress}-${chainId}`;
-  return fetchFromPendleAPI(PENDLE_ENDPOINTS.TOKENS, {
-    cacheKey,
+  // Try to get from assets endpoint
+  const assets = await fetchFromPendleAPI(PENDLE_ENDPOINTS.ASSETS_ALL, {
+    cacheKey: 'assets-all',
     cacheDuration: CACHE_DURATION.MARKETS,
-    params: {
-      address: tokenAddress,
-      chainId,
-    },
   });
+  
+  // Find token in assets array
+  if (Array.isArray(assets)) {
+    const token = assets.find((asset: any) => 
+      asset.address?.toLowerCase() === tokenAddress.toLowerCase() &&
+      asset.chainId === chainId
+    );
+    return token || null;
+  }
+  
+  return null;
 }
 
 // Re-export endpoint constant for use in other files

@@ -39,6 +39,9 @@ export async function GET(request: NextRequest) {
 
     // If API data is available, transform it
     if (markets && Array.isArray(markets) && markets.length > 0) {
+      // Note: The /v1/{chainId}/markets/active endpoint returns basic market info
+      // We may need to fetch additional details from /v2/{chainId}/markets/{address}/data
+      // for full APY/TVL data. For now, we'll use what we have.
       const transformedPools = transformMarketsToPools(markets, pools);
       
       const filteredPools = stablecoinOnly
@@ -167,51 +170,103 @@ export async function GET(request: NextRequest) {
 
 /**
  * Transform Pendle API market data to our unified pool format
- * This will be refined once we see the actual API response structure
+ * 
+ * MarketInfo structure from /v1/{chainId}/markets/active:
+ * {
+ *   name: string
+ *   address: string (market address)
+ *   expiry: string (ISO date)
+ *   pt: string (chainId-address format, e.g., "8453-0x...")
+ *   yt: string (chainId-address format)
+ *   sy: string (chainId-address format)
+ *   underlyingAsset: string (chainId-address format)
+ * }
+ * 
+ * Note: The active markets endpoint returns basic info.
+ * For full details (TVL, APY), we may need to call /v2/{chainId}/markets/{address}/data
+ * For now, we'll use reasonable defaults and calculate from expiry.
  */
-function transformMarketsToPools(
+export function transformMarketsToPools(
   markets: any[],
   poolsData: any[] | null
 ): PendlePool[] {
-  return markets.map((market, index) => {
-    // Extract data from market object
-    // Structure will be adjusted based on actual API response
-    const maturity = market.maturity || market.expiry || 0;
-    const now = Date.now() / 1000;
-    const daysToMaturity = maturity > now ? Math.ceil((maturity - now) / 86400) : 0;
+  return markets
+    .filter((market) => market.address && market.expiry) // Only include valid markets
+    .map((market) => {
+      // Parse expiry date
+      const expiryDate = market.expiry ? new Date(market.expiry) : null;
+      const maturity = expiryDate ? Math.floor(expiryDate.getTime() / 1000) : 0;
+      const now = Date.now() / 1000;
+      const daysToMaturity = maturity > now ? Math.ceil((maturity - now) / 86400) : 0;
 
-    // Try to get pool data if available
-    const poolData = poolsData?.find((p: any) => 
-      p.market === market.address || p.address === market.address
-    );
+      // Extract underlying asset address (remove chainId prefix if present)
+      const underlyingAssetAddress = market.underlyingAsset 
+        ? market.underlyingAsset.split('-').pop() || market.underlyingAsset
+        : 'UNKNOWN';
 
-    // Calculate prices and yields (will need actual API data)
-    const ptPrice = market.ptPrice || poolData?.ptPrice || 0.95;
-    const ytPrice = market.ytPrice || poolData?.ytPrice || 0.05;
-    const apy = market.apy || poolData?.apy || market.underlyingApy || 12;
-    const impliedYield = market.impliedYield || market.impliedApy || apy * 1.05;
-    const tvl = parseFloat(market.tvl || poolData?.tvl || '0') || 0;
+      // Try to get detailed data from poolsData if available
+      const poolData = poolsData?.find((p: any) => 
+        p.market === market.address || p.address === market.address
+      );
 
-    // Calculate strategy tag
-    const ptDiscount = 1 - ptPrice;
-    const strategyTag = calculateStrategyTag(apy, impliedYield, ptDiscount, daysToMaturity);
+      // Extract APY data (from details if available, otherwise use defaults)
+      const details = market.details || poolData?.details || {};
+      const underlyingApy = details.underlyingApy || 0;
+      const impliedApy = details.impliedApy || 0;
+      const aggregatedApy = details.aggregatedApy || underlyingApy;
+      
+      // Use aggregatedApy as the main APY, fallback to reasonable default
+      const apy = aggregatedApy > 0 ? aggregatedApy : (underlyingApy > 0 ? underlyingApy : 0.10); // 10% default
+      const impliedYield = impliedApy > 0 ? impliedApy : (apy * 1.05);
 
-    return {
-      address: market.address || market.market || `market-${index}`,
-      name: market.name || market.symbol || `PT-${market.underlyingAsset || 'UNKNOWN'}`,
-      symbol: market.symbol || market.name || 'PT',
-      underlyingAsset: market.underlyingAsset || market.underlying || 'UNKNOWN',
-      maturity,
-      tvl,
-      apy,
-      impliedYield,
-      ptPrice,
-      ytPrice,
-      ptDiscount,
-      daysToMaturity,
-      strategyTag,
-    };
-  });
+      // Extract TVL
+      const tvl = details.totalTvl || details.liquidity || poolData?.tvl || 0;
+
+      // Extract underlying asset symbol from name if possible
+      // Market names often follow pattern like "PT-sUSDe-26DEC2024" or "sUSDe"
+      let underlyingAsset = 'UNKNOWN';
+      if (market.name) {
+        // Try to extract asset name from market name
+        const nameParts = market.name.split('-');
+        if (nameParts.length > 1 && nameParts[0] === 'PT') {
+          underlyingAsset = nameParts[1];
+        } else {
+          underlyingAsset = nameParts[0];
+        }
+      }
+
+      // Calculate PT/YT prices from implied yield
+      // PT price approximates: 1 - (impliedYield * daysToMaturity / 365)
+      // YT price approximates: impliedYield * daysToMaturity / 365
+      const timeFactor = daysToMaturity / 365;
+      const ptPrice = impliedYield > 0 && daysToMaturity > 0
+        ? Math.max(0.5, Math.min(1, 1 - (impliedYield * timeFactor)))
+        : 0.95;
+      const ytPrice = impliedYield > 0 && daysToMaturity > 0
+        ? Math.max(0, Math.min(0.5, impliedYield * timeFactor))
+        : 0.05;
+      
+      const ptDiscount = 1 - ptPrice;
+
+      // Calculate strategy tag
+      const strategyTag = calculateStrategyTag(apy, impliedYield, ptDiscount, daysToMaturity);
+
+      return {
+        address: market.address,
+        name: market.name || `PT-${underlyingAsset}`,
+        symbol: market.name || `PT-${underlyingAsset}`,
+        underlyingAsset: underlyingAsset,
+        maturity,
+        tvl,
+        apy: apy * 100, // Convert to percentage
+        impliedYield: impliedYield * 100, // Convert to percentage
+        ptPrice,
+        ytPrice,
+        ptDiscount,
+        daysToMaturity,
+        strategyTag,
+      };
+    });
 }
 
 /**
