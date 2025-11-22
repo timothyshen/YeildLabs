@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { OctavPortfolio } from '@/types/octav';
 
 interface ChainDistributionProps {
@@ -7,6 +8,8 @@ interface ChainDistributionProps {
 }
 
 export function ChainDistribution({ portfolio }: ChainDistributionProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   const formatCurrency = (value: string | number) => {
     const num = typeof value === 'string' ? parseFloat(value) : value;
     return new Intl.NumberFormat('en-US', {
@@ -33,6 +36,9 @@ export function ChainDistribution({ portfolio }: ChainDistributionProps) {
     .sort((a, b) => parseFloat(b.value || '0') - parseFloat(a.value || '0'));
 
   const totalValue = parseFloat(portfolio.networth || '0');
+  const top5 = chains.slice(0, 5);
+  const remaining = chains.slice(5);
+  const displayChains = isExpanded ? chains : top5;
 
   const chainColors: Record<string, string> = {
     ethereum: 'bg-blue-600',
@@ -44,12 +50,22 @@ export function ChainDistribution({ portfolio }: ChainDistributionProps) {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
-      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
-        Chain Distribution
-      </h3>
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+          Chain Distribution
+        </h3>
+        {chains.length > 5 && (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium"
+          >
+            {isExpanded ? 'Show Less' : `Show All (${chains.length})`}
+          </button>
+        )}
+      </div>
 
       <div className="space-y-4">
-        {chains.map((chain) => {
+        {displayChains.map((chain) => {
           const value = parseFloat(chain.value || '0');
           const percentage = totalValue > 0 ? (value / totalValue) * 100 : 0;
           const color = chainColors[chain.key] || 'bg-gray-600';
@@ -84,6 +100,14 @@ export function ChainDistribution({ portfolio }: ChainDistributionProps) {
           );
         })}
       </div>
+
+      {!isExpanded && remaining.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+            +{remaining.length} more chain{remaining.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

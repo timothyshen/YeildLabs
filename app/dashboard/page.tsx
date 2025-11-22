@@ -17,6 +17,7 @@ import { QuickActions } from '@/components/dashboard/QuickActions';
 import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary';
 import { ProtocolBreakdown } from '@/components/dashboard/ProtocolBreakdown';
 import { ChainDistribution } from '@/components/dashboard/ChainDistribution';
+import { PerformanceTracking } from '@/components/dashboard/PerformanceTracking';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -221,8 +222,15 @@ export default function DashboardPage() {
                     <QuickActions onAction={handleQuickAction} />
                   </div>
 
-                  {/* Performance Chart */}
-                  <PerformanceChart data={performanceData} />
+                  {/* Performance Tracking with Historical Data */}
+                  {activeWallet.portfolio ? (
+                    <PerformanceTracking
+                      address={activeWallet.address}
+                      currentValue={activeWallet.totalValueUSD}
+                    />
+                  ) : (
+                    <PerformanceChart data={performanceData} />
+                  )}
 
                   {/* Protocol and Chain Breakdown */}
                   {activeWallet.portfolio && (

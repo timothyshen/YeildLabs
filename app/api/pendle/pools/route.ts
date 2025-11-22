@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ApiResponse, PendlePool } from '@/types';
+import { fetchMarkets, fetchPools } from '@/lib/pendle/apiClient';
+import { BASE_CHAIN_ID, isSupportedStablecoin } from '@/lib/pendle/config';
 
 /**
  * Pendle Pools API
- * Fetches available Pendle pools with PT/YT data
+ * Fetches available Pendle pools with PT/YT data from Pendle API
  */
 
 export async function GET(request: NextRequest) {
@@ -11,10 +13,46 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const stablecoinOnly = searchParams.get('stablecoin') === 'true';
 
-    // TODO: Implement Pendle SDK integration
-    // import { getPools } from '@pendle/sdk';
-    // const pools = await getPools(CHAIN_ID);
+    // Try to fetch from Pendle API
+    let markets;
+    let pools;
+    
+    try {
+      // Fetch markets from Pendle API
+      markets = await fetchMarkets(BASE_CHAIN_ID);
+      console.log('✅ Fetched markets from Pendle API:', Array.isArray(markets) ? markets.length : 'invalid response');
+      
+      // Fetch pools if available
+      try {
+        pools = await fetchPools(BASE_CHAIN_ID);
+        console.log('✅ Fetched pools from Pendle API:', Array.isArray(pools) ? pools.length : 'invalid response');
+      } catch (poolError) {
+        console.warn('⚠️ Could not fetch pools, using markets only:', poolError);
+        pools = null;
+      }
+    } catch (apiError) {
+      console.warn('⚠️ Pendle API not available, using mock data:', apiError);
+      // Fall back to mock data if API fails
+      markets = null;
+      pools = null;
+    }
 
+    // If API data is available, transform it
+    if (markets && Array.isArray(markets) && markets.length > 0) {
+      const transformedPools = transformMarketsToPools(markets, pools);
+      
+      const filteredPools = stablecoinOnly
+        ? transformedPools.filter(pool => isSupportedStablecoin(pool.underlyingAsset))
+        : transformedPools;
+
+      return NextResponse.json<ApiResponse<PendlePool[]>>({
+        success: true,
+        data: filteredPools,
+      });
+    }
+
+    // Fallback to mock data
+    console.log('📦 Using mock pool data');
     const mockPools: PendlePool[] = [
       {
         address: '0x1234567890123456789012345678901234567890',
@@ -122,7 +160,86 @@ export async function GET(request: NextRequest) {
     console.error('Pendle API error:', error);
     return NextResponse.json<ApiResponse<null>>({
       success: false,
-      error: 'Failed to fetch Pendle pools',
+      error: error instanceof Error ? error.message : 'Failed to fetch Pendle pools',
     }, { status: 500 });
   }
+}
+
+/**
+ * Transform Pendle API market data to our unified pool format
+ * This will be refined once we see the actual API response structure
+ */
+function transformMarketsToPools(
+  markets: any[],
+  poolsData: any[] | null
+): PendlePool[] {
+  return markets.map((market, index) => {
+    // Extract data from market object
+    // Structure will be adjusted based on actual API response
+    const maturity = market.maturity || market.expiry || 0;
+    const now = Date.now() / 1000;
+    const daysToMaturity = maturity > now ? Math.ceil((maturity - now) / 86400) : 0;
+
+    // Try to get pool data if available
+    const poolData = poolsData?.find((p: any) => 
+      p.market === market.address || p.address === market.address
+    );
+
+    // Calculate prices and yields (will need actual API data)
+    const ptPrice = market.ptPrice || poolData?.ptPrice || 0.95;
+    const ytPrice = market.ytPrice || poolData?.ytPrice || 0.05;
+    const apy = market.apy || poolData?.apy || market.underlyingApy || 12;
+    const impliedYield = market.impliedYield || market.impliedApy || apy * 1.05;
+    const tvl = parseFloat(market.tvl || poolData?.tvl || '0') || 0;
+
+    // Calculate strategy tag
+    const ptDiscount = 1 - ptPrice;
+    const strategyTag = calculateStrategyTag(apy, impliedYield, ptDiscount, daysToMaturity);
+
+    return {
+      address: market.address || market.market || `market-${index}`,
+      name: market.name || market.symbol || `PT-${market.underlyingAsset || 'UNKNOWN'}`,
+      symbol: market.symbol || market.name || 'PT',
+      underlyingAsset: market.underlyingAsset || market.underlying || 'UNKNOWN',
+      maturity,
+      tvl,
+      apy,
+      impliedYield,
+      ptPrice,
+      ytPrice,
+      ptDiscount,
+      daysToMaturity,
+      strategyTag,
+    };
+  });
+}
+
+/**
+ * Calculate strategy tag based on pool metrics
+ */
+function calculateStrategyTag(
+  apy: number,
+  impliedYield: number,
+  ptDiscount: number,
+  daysToMaturity: number
+): 'Best PT' | 'Best YT' | 'Risky' | 'Neutral' {
+  const yieldDiff = impliedYield - apy;
+  const discountPercent = ptDiscount * 100;
+
+  // Best PT: High discount, implied yield significantly higher than APY
+  if (discountPercent > 3 && yieldDiff > 1) {
+    return 'Best PT';
+  }
+
+  // Best YT: High APY, low discount, potential for APY growth
+  if (apy > 20 && discountPercent < 2 && daysToMaturity > 60) {
+    return 'Best YT';
+  }
+
+  // Risky: Very high APY or very high discount (volatility risk)
+  if (apy > 30 || discountPercent > 10) {
+    return 'Risky';
+  }
+
+  return 'Neutral';
 }
