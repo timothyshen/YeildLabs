@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ApiResponse, PendlePool } from '@/types';
-import { fetchMarkets, fetchPools } from '@/lib/pendle/apiClient';
+import { fetchMarkets, fetchPools, fetchMarketDetails } from '@/lib/pendle/apiClient';
 import { BASE_CHAIN_ID, isSupportedStablecoin } from '@/lib/pendle/config';
 
 /**
@@ -31,17 +31,14 @@ export async function GET(request: NextRequest) {
         pools = null;
       }
     } catch (apiError) {
-      console.warn('⚠️ Pendle API not available, using mock data:', apiError);
-      // Fall back to mock data if API fails
-      markets = null;
-      pools = null;
+      console.error('❌ Pendle API error:', apiError);
+      throw apiError; // Don't fall back to mock data
     }
 
     // If API data is available, transform it
     if (markets && Array.isArray(markets) && markets.length > 0) {
-      // Note: The /v1/{chainId}/markets/active endpoint returns basic market info
-      // We may need to fetch additional details from /v2/{chainId}/markets/{address}/data
-      // for full APY/TVL data. For now, we'll use what we have.
+      // Markets from /core/v1/{chainId}/markets/active already include details object
+      // No need to fetch additional details unless we want more granular data
       const transformedPools = transformMarketsToPools(markets, pools);
       
       const filteredPools = stablecoinOnly
@@ -54,116 +51,17 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fallback to mock data
-    console.log('📦 Using mock pool data');
-    const mockPools: PendlePool[] = [
-      {
-        address: '0x1234567890123456789012345678901234567890',
-        name: 'PT-sUSDe-26DEC2024',
-        symbol: 'PT-sUSDe',
-        underlyingAsset: 'sUSDe',
-        maturity: Math.floor(new Date('2024-12-26').getTime() / 1000),
-        tvl: 52000000,
-        apy: 15.8,
-        impliedYield: 16.5,
-        ptPrice: 0.973,
-        ytPrice: 0.027,
-        ptDiscount: 0.027,
-        daysToMaturity: 34,
-        strategyTag: 'Best PT',
-      },
-      {
-        address: '0x2345678901234567890123456789012345678901',
-        name: 'PT-USDC-29JAN2025',
-        symbol: 'PT-USDC',
-        underlyingAsset: 'USDC',
-        maturity: Math.floor(new Date('2025-01-29').getTime() / 1000),
-        tvl: 38500000,
-        apy: 12.3,
-        impliedYield: 13.1,
-        ptPrice: 0.985,
-        ytPrice: 0.015,
-        ptDiscount: 0.015,
-        daysToMaturity: 68,
-        strategyTag: 'Neutral',
-      },
-      {
-        address: '0x3456789012345678901234567890123456789012',
-        name: 'PT-USD0++-27FEB2025',
-        symbol: 'PT-USD0++',
-        underlyingAsset: 'USD0++',
-        maturity: Math.floor(new Date('2025-02-27').getTime() / 1000),
-        tvl: 15200000,
-        apy: 22.5,
-        impliedYield: 24.8,
-        ptPrice: 0.945,
-        ytPrice: 0.055,
-        ptDiscount: 0.055,
-        daysToMaturity: 97,
-        strategyTag: 'Best YT',
-      },
-      {
-        address: '0x4567890123456789012345678901234567890123',
-        name: 'PT-fUSD-30MAR2025',
-        symbol: 'PT-fUSD',
-        underlyingAsset: 'fUSD',
-        maturity: Math.floor(new Date('2025-03-30').getTime() / 1000),
-        tvl: 8900000,
-        apy: 18.7,
-        impliedYield: 19.2,
-        ptPrice: 0.962,
-        ytPrice: 0.038,
-        ptDiscount: 0.038,
-        daysToMaturity: 128,
-        strategyTag: 'Best PT',
-      },
-      {
-        address: '0x5678901234567890123456789012345678901234',
-        name: 'PT-cUSD-25APR2025',
-        symbol: 'PT-cUSD',
-        underlyingAsset: 'cUSD',
-        maturity: Math.floor(new Date('2025-04-25').getTime() / 1000),
-        tvl: 6200000,
-        apy: 28.3,
-        impliedYield: 31.5,
-        ptPrice: 0.912,
-        ytPrice: 0.088,
-        ptDiscount: 0.088,
-        daysToMaturity: 154,
-        strategyTag: 'Risky',
-      },
-      {
-        address: '0x6789012345678901234567890123456789012345',
-        name: 'PT-sKAITO-15MAY2025',
-        symbol: 'PT-sKAITO',
-        underlyingAsset: 'sKAITO',
-        maturity: Math.floor(new Date('2025-05-15').getTime() / 1000),
-        tvl: 3800000,
-        apy: 35.6,
-        impliedYield: 38.9,
-        ptPrice: 0.889,
-        ytPrice: 0.111,
-        ptDiscount: 0.111,
-        daysToMaturity: 174,
-        strategyTag: 'Risky',
-      },
-    ];
-
-    const filteredPools = stablecoinOnly
-      ? mockPools.filter(pool =>
-          ['USDC', 'sUSDe', 'cUSD', 'USD0++', 'fUSD'].includes(pool.underlyingAsset)
-        )
-      : mockPools;
-
-    return NextResponse.json<ApiResponse<PendlePool[]>>({
-      success: true,
-      data: filteredPools,
-    });
-  } catch (error) {
-    console.error('Pendle API error:', error);
+    // No API data available - return error
+    console.error('❌ No markets found from Pendle API');
     return NextResponse.json<ApiResponse<null>>({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch Pendle pools',
+      error: 'No Pendle markets found. Please check the API connection.',
+    }, { status: 503 });
+  } catch (error) {
+    console.error('❌ Pendle API error:', error);
+    return NextResponse.json<ApiResponse<null>>({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch Pendle pools from API',
     }, { status: 500 });
   }
 }
@@ -209,18 +107,22 @@ export function transformMarketsToPools(
         p.market === market.address || p.address === market.address
       );
 
-      // Extract APY data (from details if available, otherwise use defaults)
+      // Extract APY data from details object (already included in API response)
       const details = market.details || poolData?.details || {};
-      const underlyingApy = details.underlyingApy || 0;
-      const impliedApy = details.impliedApy || 0;
-      const aggregatedApy = details.aggregatedApy || underlyingApy;
       
-      // Use aggregatedApy as the main APY, fallback to reasonable default
-      const apy = aggregatedApy > 0 ? aggregatedApy : (underlyingApy > 0 ? underlyingApy : 0.10); // 10% default
-      const impliedYield = impliedApy > 0 ? impliedApy : (apy * 1.05);
+      // Get APY data from details object
+      // The API provides: aggregatedApy, maxBoostedApy, impliedApy, pendleApy
+      const aggregatedApy = details.aggregatedApy || 0;
+      const maxBoostedApy = details.maxBoostedApy || 0;
+      const impliedApy = details.impliedApy || 0;
+      const pendleApy = details.pendleApy || 0;
+      
+      // Use aggregatedApy as primary, fallback to maxBoostedApy, then impliedApy
+      const apy = aggregatedApy > 0 ? aggregatedApy : (maxBoostedApy > 0 ? maxBoostedApy : (impliedApy > 0 ? impliedApy : 0));
+      const impliedYield = impliedApy > 0 ? impliedApy : (apy > 0 ? apy * 1.05 : 0);
 
-      // Extract TVL
-      const tvl = details.totalTvl || details.liquidity || poolData?.tvl || 0;
+      // Extract TVL from details (API provides 'liquidity' field)
+      const tvl = details.liquidity || details.totalTvl || details.tvl || poolData?.tvl || 0;
 
       // Extract underlying asset symbol from name if possible
       // Market names often follow pattern like "PT-sUSDe-26DEC2024" or "sUSDe"

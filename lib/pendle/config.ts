@@ -15,9 +15,10 @@ export const BASE_CHAIN_NAME = 'base';
 // Based on API documentation at https://api-v2.pendle.finance/core/docs
 // Confirmed working endpoints:
 export const PENDLE_ENDPOINTS = {
-  // ✅ Confirmed: Returns active markets for a specific chain
-  // Format: /v1/{chainId}/markets/active
-  MARKETS_ACTIVE: '/v1/{chainId}/markets/active',
+  // ✅ Confirmed working: Returns active markets for a specific chain with full details
+  // Format: /core/v1/{chainId}/markets/active
+  // Response: { markets: [{ name, address, expiry, pt, yt, sy, underlyingAsset, details: { liquidity, aggregatedApy, ... } }] }
+  MARKETS_ACTIVE: '/core/v1/{chainId}/markets/active',
   // ✅ Confirmed working: Returns all markets across all chains
   MARKETS_ALL: '/v1/markets/all',
   // ✅ Confirmed working: Returns all assets/tokens

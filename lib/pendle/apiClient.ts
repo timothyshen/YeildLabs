@@ -89,8 +89,9 @@ export function clearCache(cacheKey?: string): void {
 
 /**
  * Fetch markets from Pendle API
- * Uses /v1/{chainId}/markets/active which returns active markets for a specific chain
+ * Uses /core/v1/{chainId}/markets/active which returns active markets with full details
  * Response structure: { markets: MarketInfo[] }
+ * Each market includes a 'details' object with liquidity, APY, etc.
  */
 export async function fetchMarkets(chainId: number = 8453) {
   const cacheKey = `markets-${chainId}`;
@@ -107,8 +108,30 @@ export async function fetchMarkets(chainId: number = 8453) {
   // Extract markets array from response
   const markets = response?.markets || (Array.isArray(response) ? response : []);
   
-  console.log(`✅ Fetched ${markets.length} active markets for chain ${chainId}`);
+  console.log(`✅ Fetched ${markets.length} active markets for chain ${chainId} with details`);
   return markets;
+}
+
+/**
+ * Fetch detailed market data for a specific market
+ * Uses /v2/{chainId}/markets/{address}/data
+ */
+export async function fetchMarketDetails(marketAddress: string, chainId: number = 8453) {
+  const cacheKey = `market-details-${chainId}-${marketAddress}`;
+  const endpoint = PENDLE_ENDPOINTS.MARKETS_DATA
+    .replace('{chainId}', String(chainId))
+    .replace('{address}', marketAddress);
+  
+  try {
+    const data = await fetchFromPendleAPI(endpoint, {
+      cacheKey,
+      cacheDuration: CACHE_DURATION.MARKETS,
+    });
+    return data;
+  } catch (error) {
+    console.warn(`⚠️ Could not fetch details for market ${marketAddress}:`, error);
+    return null;
+  }
 }
 
 /**
