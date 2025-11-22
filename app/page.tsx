@@ -29,35 +29,47 @@ export default function Home() {
             one-click execution, and automated portfolio management.
           </p>
           <div className="flex gap-4 justify-center">
+            <a
+              href="/dashboard"
+              className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-lg transition-colors"
+            >
+              Launch Dashboard
+            </a>
             <ConnectKitButton />
           </div>
         </div>
 
         {/* Features Grid */}
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto mt-20">
-          <FeatureCard
-            title="Wallet Dashboard"
-            description="View all your Pendle positions, PnL, and yields in one place"
-          />
-          <FeatureCard
-            title="Yield Scanner"
-            description="Find the best PT/YT opportunities across all stablecoin pools"
-          />
+          <a href="/dashboard">
+            <FeatureCard
+              title="Wallet Dashboard"
+              description="View all your Pendle positions, PnL, and yields in one place"
+            />
+          </a>
+          <a href="/scanner">
+            <FeatureCard
+              title="Yield Scanner"
+              description="Find the best PT/YT opportunities across all stablecoin pools"
+            />
+          </a>
+          <a href="/simulator">
+            <FeatureCard
+              title="Yield Simulator"
+              description="Simulate future yields and analyze risk scenarios"
+            />
+          </a>
           <FeatureCard
             title="AI Strategies"
-            description="Get personalized strategy recommendations based on your risk profile"
+            description="Get personalized strategy recommendations (Coming Soon)"
           />
           <FeatureCard
             title="One-Click Execution"
-            description="Swap any token → PT/YT in a single transaction"
+            description="Swap any token → PT/YT in a single transaction (Coming Soon)"
           />
           <FeatureCard
             title="Auto-Roll"
-            description="Automatically roll your PT positions before maturity"
-          />
-          <FeatureCard
-            title="Yield Simulator"
-            description="Simulate future yields and analyze risk scenarios"
+            description="Automatically roll your PT positions before maturity (Coming Soon)"
           />
         </div>
       </div>
