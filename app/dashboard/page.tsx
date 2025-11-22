@@ -14,6 +14,9 @@ import { PerformanceChart } from '@/components/dashboard/PerformanceChart';
 import { ExitToUSDC } from '@/components/dashboard/ExitToUSDC';
 import { EnhancedPositionCard } from '@/components/dashboard/EnhancedPositionCard';
 import { QuickActions } from '@/components/dashboard/QuickActions';
+import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary';
+import { ProtocolBreakdown } from '@/components/dashboard/ProtocolBreakdown';
+import { ChainDistribution } from '@/components/dashboard/ChainDistribution';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -207,6 +210,11 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
+                  {/* Portfolio Summary from Octav */}
+                  {activeWallet.portfolio && (
+                    <PortfolioSummary portfolio={activeWallet.portfolio} />
+                  )}
+
                   {/* Top Row: Yield Summary and Performance Chart */}
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                     <YieldSummaryCard metrics={yieldMetrics} />
@@ -215,6 +223,14 @@ export default function DashboardPage() {
 
                   {/* Performance Chart */}
                   <PerformanceChart data={performanceData} />
+
+                  {/* Protocol and Chain Breakdown */}
+                  {activeWallet.portfolio && (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                      <ProtocolBreakdown portfolio={activeWallet.portfolio} />
+                      <ChainDistribution portfolio={activeWallet.portfolio} />
+                    </div>
+                  )}
 
                   {/* Portfolio Allocation and Assets */}
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

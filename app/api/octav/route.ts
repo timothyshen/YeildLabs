@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const octavApiKey = process.env.OCTAV_API_KEY;
 
     if (!octavApiKey) {
-      console.warn('OCTAV_API_KEY not set, using mock data');
+      console.warn('⚠️ OCTAV_API_KEY not set, using mock data');
       // Return mock data if API key is not configured
       const mockData: { positions: UserPosition[], assets: WalletAsset[], totalValueUSD: number } = {
         positions: [],
@@ -40,6 +40,8 @@ export async function GET(request: NextRequest) {
         data: mockData,
       });
     }
+
+    console.log('✅ Octav API key found, fetching portfolio for:', address);
 
     // Build query parameters
     const params = new URLSearchParams({
@@ -63,20 +65,81 @@ export async function GET(request: NextRequest) {
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.message || errorData.error || `HTTP ${response.status}`;
 
+      console.error('❌ Octav API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorMessage,
+        errorData,
+      });
+
       return NextResponse.json<ApiResponse<null>>({
         success: false,
         error: `Octav API error: ${errorMessage}`,
       }, { status: response.status });
     }
 
-    const portfolio: OctavPortfolio = await response.json();
+    const responseData = await response.json();
+
+    // Octav API may return an array if multiple addresses, or a single object
+    let portfolio: OctavPortfolio;
+    if (Array.isArray(responseData)) {
+      // If array, take the first item (we only requested one address)
+      portfolio = responseData[0];
+      if (!portfolio) {
+        console.error('❌ Empty array response from Octav API');
+        return NextResponse.json<ApiResponse<null>>({
+          success: false,
+          error: 'No portfolio data returned for address',
+        }, { status: 404 });
+      }
+    } else {
+      portfolio = responseData;
+    }
+
+    // Validate response structure
+    if (!portfolio || typeof portfolio !== 'object') {
+      console.error('❌ Invalid portfolio response structure:', portfolio);
+      return NextResponse.json<ApiResponse<null>>({
+        success: false,
+        error: 'Invalid response from Octav API',
+      }, { status: 500 });
+    }
+
+    console.log('✅ Octav API response received:', {
+      address: portfolio.address,
+      networth: portfolio.networth,
+      hasAssetByProtocols: !!portfolio.assetByProtocols,
+      assetsCount: portfolio.assetByProtocols ? Object.keys(portfolio.assetByProtocols).length : 0,
+      hasChains: !!portfolio.chains,
+      chains: portfolio.chains ? Object.keys(portfolio.chains) : [],
+      rawResponse: JSON.stringify(portfolio).substring(0, 200), // First 200 chars for debugging
+    });
 
     // Transform Octav data to our format
-    const transformed = octavToLegacyFormat(portfolio);
+    let transformed;
+    try {
+      transformed = octavToLegacyFormat(portfolio);
+    } catch (transformError) {
+      console.error('❌ Error transforming Octav data:', transformError);
+      return NextResponse.json<ApiResponse<null>>({
+        success: false,
+        error: `Failed to transform portfolio data: ${transformError instanceof Error ? transformError.message : 'Unknown error'}`,
+      }, { status: 500 });
+    }
 
-    return NextResponse.json<ApiResponse<typeof transformed>>({
+    console.log('✅ Transformed data:', {
+      assets: transformed.assets.length,
+      positions: transformed.positions.length,
+      totalValue: transformed.totalValueUSD,
+    });
+
+    // Return both transformed data and full portfolio for dashboard use
+    return NextResponse.json<ApiResponse<typeof transformed & { portfolio: OctavPortfolio }>>({
       success: true,
-      data: transformed,
+      data: {
+        ...transformed,
+        portfolio, // Include full portfolio data
+      },
     });
   } catch (error) {
     console.error('Octav API error:', error);

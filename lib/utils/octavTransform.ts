@@ -33,6 +33,11 @@ import {
  * Extract Pendle protocol from Octav portfolio
  */
 export function extractPendleProtocol(portfolio: OctavPortfolio): OctavProtocol | null {
+  // Check if assetByProtocols exists
+  if (!portfolio.assetByProtocols || typeof portfolio.assetByProtocols !== 'object') {
+    return null;
+  }
+
   // Look for Pendle protocol in assetByProtocols
   const pendleKeys = Object.keys(portfolio.assetByProtocols).filter(key =>
     key.toLowerCase().includes('pendle')
@@ -50,8 +55,13 @@ export function extractPendleProtocol(portfolio: OctavPortfolio): OctavProtocol 
  * Extract wallet assets (non-Pendle) from Octav portfolio
  */
 export function extractWalletAssets(portfolio: OctavPortfolio): OctavAsset[] {
+  // Check if assetByProtocols exists
+  if (!portfolio.assetByProtocols || typeof portfolio.assetByProtocols !== 'object') {
+    return [];
+  }
+
   const walletProtocol = portfolio.assetByProtocols['wallet'];
-  if (!walletProtocol) {
+  if (!walletProtocol || !walletProtocol.assets) {
     return [];
   }
 
@@ -150,42 +160,56 @@ export function octavToLegacyFormat(portfolio: OctavPortfolio): {
   positions: UserPosition[];
   totalValueUSD: number;
 } {
-  const assets: WalletAsset[] = extractWalletAssets(portfolio).map(asset => ({
-    token: asset.contractAddress || '',
-    symbol: asset.symbol,
-    balance: parseFloat(asset.balance) || 0,
-    valueUSD: parseFloat(asset.value) || 0,
+  // Validate portfolio structure
+  if (!portfolio || typeof portfolio !== 'object') {
+    console.warn('Invalid portfolio data received');
+    return {
+      assets: [],
+      positions: [],
+      totalValueUSD: 0,
+    };
+  }
+
+  // Safely extract wallet assets
+  const walletAssets = extractWalletAssets(portfolio);
+  const assets: WalletAsset[] = walletAssets.map(asset => ({
+    token: asset?.contractAddress || '',
+    symbol: asset?.symbol || 'UNKNOWN',
+    balance: parseFloat(asset?.balance || '0') || 0,
+    valueUSD: parseFloat(asset?.value || '0') || 0,
   }));
 
   // Extract Pendle positions
   const pendleProtocol = extractPendleProtocol(portfolio);
   const positions: UserPosition[] = [];
 
-  if (pendleProtocol) {
+  if (pendleProtocol && pendleProtocol.assets && Array.isArray(pendleProtocol.assets)) {
     // Convert Pendle assets to positions
     // Note: This is simplified - in production, we'd need to match with pool data
     pendleProtocol.assets.forEach(asset => {
-      const isPT = asset.symbol.toLowerCase().includes('pt');
-      const isYT = asset.symbol.toLowerCase().includes('yt');
+      if (!asset) return;
+      
+      const isPT = asset.symbol?.toLowerCase().includes('pt') || false;
+      const isYT = asset.symbol?.toLowerCase().includes('yt') || false;
 
       if (isPT || isYT) {
         positions.push({
-          pool: asset.contractAddress || asset.symbol,
-          ptBalance: isPT ? parseFloat(asset.balance) : 0,
-          ytBalance: isYT ? parseFloat(asset.balance) : 0,
+          pool: asset.contractAddress || asset.symbol || 'unknown',
+          ptBalance: isPT ? parseFloat(asset.balance || '0') : 0,
+          ytBalance: isYT ? parseFloat(asset.balance || '0') : 0,
           syBalance: 0,
           lpBalance: 0,
-          maturityValue: isPT ? parseFloat(asset.balance) : 0,
-          costBasis: parseFloat(asset.value) * 0.95, // Estimate
-          currentValue: parseFloat(asset.value),
+          maturityValue: isPT ? parseFloat(asset.balance || '0') : 0,
+          costBasis: parseFloat(asset.value || '0') * 0.95, // Estimate
+          currentValue: parseFloat(asset.value || '0'),
           realizedPnL: 0,
-          unrealizedPnL: parseFloat(asset.value) * 0.05, // Estimate
+          unrealizedPnL: parseFloat(asset.value || '0') * 0.05, // Estimate
         });
       }
     });
   }
 
-  const totalValueUSD = parseFloat(portfolio.networth) || 0;
+  const totalValueUSD = parseFloat(portfolio.networth || '0') || 0;
 
   return {
     assets,

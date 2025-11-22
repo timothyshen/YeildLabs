@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAccount } from 'wagmi';
 import type { WalletAsset, UserPosition } from '@/types';
+import type { OctavPortfolio } from '@/types/octav';
 
 export interface ConnectedWallet {
   address: string;
@@ -11,6 +12,7 @@ export interface ConnectedWallet {
   assets: WalletAsset[];
   positions: UserPosition[];
   totalValueUSD: number;
+  portfolio?: OctavPortfolio; // Full Octav portfolio data
 }
 
 export function useMultiWallet() {
@@ -53,6 +55,7 @@ export function useMultiWallet() {
           assets: walletData.assets,
           positions: walletData.positions,
           totalValueUSD: walletData.totalValueUSD,
+          portfolio: walletData.portfolio,
         }
       ]);
     } catch (error) {
@@ -98,6 +101,7 @@ export function useMultiWallet() {
                 assets: walletData.assets,
                 positions: walletData.positions,
                 totalValueUSD: walletData.totalValueUSD,
+                portfolio: walletData.portfolio,
               }
             : w
         )
@@ -143,6 +147,7 @@ async function fetchWalletData(address: string): Promise<{
   assets: WalletAsset[];
   positions: UserPosition[];
   totalValueUSD: number;
+  portfolio?: OctavPortfolio;
 }> {
   try {
     // Call our Octav API route
@@ -154,6 +159,7 @@ async function fetchWalletData(address: string): Promise<{
         assets: result.data.assets || [],
         positions: result.data.positions || [],
         totalValueUSD: result.data.totalValueUSD || 0,
+        portfolio: result.data.portfolio, // Include full portfolio
       };
     }
 
