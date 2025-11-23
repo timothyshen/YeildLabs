@@ -2,14 +2,18 @@
 
 import { useState } from 'react';
 import type { UserPosition } from '@/types';
+import { RedeemModal } from './RedeemModal';
 
 interface EnhancedPositionCardProps {
   position: UserPosition;
   onManage?: (pool: string, action: 'roll' | 'exit' | 'add') => void;
+  onRedeemSuccess?: () => void;
 }
 
-export function EnhancedPositionCard({ position, onManage }: EnhancedPositionCardProps) {
+export function EnhancedPositionCard({ position, onManage, onRedeemSuccess }: EnhancedPositionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [redeemType, setRedeemType] = useState<'PT' | 'YT' | 'BOTH'>('BOTH');
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -214,36 +218,80 @@ export function EnhancedPositionCard({ position, onManage }: EnhancedPositionCar
           )}
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-3 gap-2 mt-4">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onManage?.(poolName, 'add');
-              }}
-              className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              Add More
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onManage?.(poolName, 'roll');
-              }}
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              Roll PT
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onManage?.(poolName, 'exit');
-              }}
-              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              Exit
-            </button>
+          <div className="space-y-2 mt-4">
+            {/* Redeem Options */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRedeemType('PT');
+                  setShowRedeemModal(true);
+                }}
+                disabled={ptBalance <= 0}
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Redeem PT
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRedeemType('YT');
+                  setShowRedeemModal(true);
+                }}
+                disabled={ytBalance <= 0}
+                className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Redeem YT
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRedeemType('BOTH');
+                  setShowRedeemModal(true);
+                }}
+                disabled={ptBalance <= 0 || ytBalance <= 0}
+                className="px-3 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Redeem Both
+              </button>
+            </div>
+
+            {/* Other Actions */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onManage?.(poolName, 'add');
+                }}
+                className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                Add More
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onManage?.(poolName, 'roll');
+                }}
+                className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                Roll Position
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Redeem Modal */}
+      {showRedeemModal && (
+        <RedeemModal
+          position={position}
+          tokenType={redeemType}
+          onClose={() => setShowRedeemModal(false)}
+          onSuccess={() => {
+            setShowRedeemModal(false);
+            onRedeemSuccess?.();
+          }}
+        />
       )}
     </div>
   );

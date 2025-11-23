@@ -413,6 +413,10 @@ export default function PortfolioPage() {
                         key={index}
                         position={position}
                         onManage={handleManagePosition}
+                        onRedeemSuccess={() => {
+                          // Reload positions after successful redeem
+                          loadPositions();
+                        }}
                       />
                     ))}
                   </div>
