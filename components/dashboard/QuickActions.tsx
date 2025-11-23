@@ -22,21 +22,21 @@ export function QuickActions({ onAction }: QuickActionsProps) {
       description: 'Scan all stablecoin pools',
       icon: '🔍',
       href: '/opportunities',
-      color: 'from-blue-500 to-blue-600',
+      color: 'gradient-blue glow-blue',
     },
     {
       label: 'Buy PT/YT',
       description: 'Enter a new position',
       icon: '💰',
       onClick: () => onAction?.('buy'),
-      color: 'from-green-500 to-green-600',
+      color: 'gradient-green glow-green',
     },
     {
       label: 'Simulate Yield',
       description: 'Calculate future returns',
       icon: '📊',
       href: '/strategy',
-      color: 'from-purple-500 to-purple-600',
+      color: 'gradient-purple glow-purple',
     },
     {
       label: 'Auto-Roll Setup',
@@ -48,7 +48,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
   ];
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+    <div className="glass rounded-xl p-6 shadow-lg">
       <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
         Quick Actions
       </h3>
@@ -57,7 +57,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
         {actions.map((action, index) => {
           const content = (
             <div
-              className={`bg-gradient-to-br ${action.color} rounded-lg p-4 text-white cursor-pointer hover:shadow-lg transition-all transform hover:-translate-y-1`}
+              className={`${action.color} rounded-lg p-4 text-white cursor-pointer hover:shadow-xl transition-all transform hover:-translate-y-1 hover:scale-105`}
             >
               <div className="text-3xl mb-2">{action.icon}</div>
               <h4 className="font-bold text-lg mb-1">{action.label}</h4>

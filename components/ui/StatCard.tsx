@@ -16,11 +16,19 @@ interface StatCardProps {
 }
 
 const gradientClasses = {
-  blue: 'from-blue-500 to-blue-600',
-  green: 'from-green-500 to-green-600',
-  purple: 'from-purple-500 to-purple-600',
+  blue: 'gradient-blue',
+  green: 'gradient-green',
+  purple: 'gradient-purple',
   orange: 'from-orange-500 to-orange-600',
   red: 'from-red-500 to-red-600',
+};
+
+const glowClasses = {
+  blue: 'glow-blue',
+  green: 'glow-green',
+  purple: 'glow-purple',
+  orange: '',
+  red: '',
 };
 
 export function StatCard({
@@ -47,7 +55,7 @@ export function StatCard({
 
   return (
     <div
-      className={`bg-gradient-to-br ${gradientClasses[gradient]} rounded-xl p-6 text-white ${className}`}
+      className={`${gradientClasses[gradient]} ${glowClasses[gradient]} rounded-xl p-6 text-white transition-all hover:scale-105 ${className}`}
     >
       <div className="flex items-start justify-between mb-2">
         <p className="text-sm opacity-90">{title}</p>

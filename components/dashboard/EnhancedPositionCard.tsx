@@ -42,10 +42,10 @@ export function EnhancedPositionCard({ position, onManage }: EnhancedPositionCar
     : null;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-200 dark:border-gray-700">
+    <div className="glass rounded-xl shadow-lg overflow-hidden border transition-all hover:shadow-xl">
       {/* Header */}
       <div
-        className="p-6 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+        className="p-6 cursor-pointer hover:bg-white/10 transition-all"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center justify-between mb-4">

@@ -190,7 +190,7 @@ export default function PortfolioPage() {
         />
 
         {!isConnected ? (
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center shadow-md">
+          <div className="glass rounded-xl p-12 text-center shadow-lg">
             <div className="text-6xl mb-4">💼</div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
               Connect Your Wallet
@@ -226,13 +226,13 @@ export default function PortfolioPage() {
             </div>
 
             {/* Controls */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md mb-6 p-4">
+            <div className="glass rounded-xl shadow-lg mb-6 p-4">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 {/* Left side - Filters */}
                 <div className="flex items-center gap-4">
                   <button
                     onClick={() => setShowFilters(!showFilters)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 dark:bg-white/5 dark:hover:bg-white/10 rounded-lg transition-all"
                   >
                     <SlidersHorizontal className="w-4 h-4" />
                     <span className="text-sm font-medium">Filters</span>

@@ -359,7 +359,7 @@ export default function OpportunitiesPage() {
         />
 
         {/* Tab Navigation */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md mb-6">
+        <div className="glass rounded-xl shadow-lg mb-6">
           <div className="flex border-b border-gray-200 dark:border-gray-700">
             <button
               onClick={() => setActiveTab('recommendations')}
@@ -402,7 +402,7 @@ export default function OpportunitiesPage() {
 
         {/* Filters */}
         {result && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md mb-6 overflow-hidden">
+          <div className="glass rounded-xl shadow-lg mb-6 overflow-hidden">
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
@@ -531,7 +531,7 @@ export default function OpportunitiesPage() {
         {activeTab === 'recommendations' && (
           <div>
             {!isConnected ? (
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center shadow-md">
+              <div className="glass rounded-xl p-12 text-center shadow-lg">
                 <div className="text-6xl mb-4">🔐</div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
                   Connect Your Wallet
@@ -543,7 +543,7 @@ export default function OpportunitiesPage() {
             ) : (
               <>
                 {!result && !isLoading && (
-                  <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center shadow-md">
+                  <div className="glass rounded-xl p-8 text-center shadow-lg">
                     <Zap className="w-16 h-16 mx-auto text-blue-600 dark:text-blue-400 mb-4" />
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
                       Ready to Find Opportunities
@@ -608,7 +608,7 @@ export default function OpportunitiesPage() {
             </div>
 
             {/* Filters and Search */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 mb-6 shadow-md">
+            <div className="glass rounded-xl p-6 mb-6 shadow-lg">
               <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                 {/* Search */}
                 <div className="flex-1 max-w-md">

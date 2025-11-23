@@ -43,25 +43,25 @@ export function PageHeader({
           <>
             <Link
               href="/dashboard"
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-all hover:scale-105"
             >
               Dashboard
             </Link>
             <Link
               href="/portfolio"
-              className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-lg font-medium transition-colors"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-all hover:scale-105"
             >
               Portfolio
             </Link>
             <Link
               href="/opportunities"
-              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-all hover:scale-105"
             >
               Opportunities
             </Link>
             <Link
               href="/strategy"
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-all hover:scale-105"
             >
               Strategy
             </Link>

@@ -99,7 +99,7 @@ export default function DashboardPage() {
         />
 
         {!isConnected ? (
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center border border-gray-200 dark:border-gray-700">
+          <div className="glass rounded-xl p-12 text-center shadow-lg">
             <div className="text-6xl mb-4">👛</div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
               Connect Your Wallet
@@ -115,7 +115,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left Sidebar - Wallets */}
             <div className="lg:col-span-1 space-y-4">
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-6">
+              <div className="glass rounded-xl p-6 shadow-lg">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                     My Wallets
@@ -161,7 +161,7 @@ export default function DashboardPage() {
               {activeWallet ? (
                 <>
                   {/* Active Wallet Header */}
-                  <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
+                  <div className="glass rounded-xl p-6 shadow-lg">
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">

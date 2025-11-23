@@ -27,7 +27,7 @@ export function YieldSummaryCard({ metrics }: YieldSummaryCardProps) {
   };
 
   return (
-    <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-6 text-white shadow-lg">
+    <div className="gradient-green glow-green rounded-xl p-6 text-white shadow-lg transition-all hover:scale-105">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold opacity-90">Yield Summary</h3>
         <div className="px-3 py-1 bg-white/20 rounded-full text-sm font-medium">

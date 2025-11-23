@@ -51,7 +51,7 @@ export default function SimulatorPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Input Form */}
           <div className="space-y-6">
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+            <div className="glass rounded-xl p-6 shadow-lg">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
                 Simulation Parameters
               </h2>
