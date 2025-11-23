@@ -19,7 +19,7 @@ export interface Toast {
 
 interface ToastContextType {
   toasts: Toast[];
-  showToast: (toast: Omit<Toast, 'id'>) => void;
+  showToast: (toast: Omit<Toast, 'id'>) => string;
   removeToast: (id: string) => void;
 }
 
@@ -44,6 +44,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       duration: toast.duration ?? (toast.type === 'loading' ? 0 : 5000),
     };
     setToasts((prev) => [...prev, newToast]);
+    return id;
   }, []);
 
   const removeToast = useCallback((id: string) => {

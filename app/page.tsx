@@ -35,7 +35,6 @@ export default function Home() {
             >
               Launch Dashboard
             </a>
-            <ConnectKitButton />
           </div>
         </div>
 

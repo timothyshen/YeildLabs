@@ -62,6 +62,14 @@ export async function POST(request: NextRequest) {
       allowPartialFill: false,
     }, chainId);
 
+    console.log('📦 1inch swap response:', JSON.stringify(swapResponse, null, 2));
+
+    // Check if transaction data exists
+    if (!swapResponse || !swapResponse.tx) {
+      console.error('❌ Invalid swap response from 1inch:', swapResponse);
+      throw new Error('1inch API did not return transaction data. Response: ' + JSON.stringify(swapResponse));
+    }
+
     // Format transaction
     const transaction: SwapTransaction = {
       to: swapResponse.tx.to,

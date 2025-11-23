@@ -121,7 +121,13 @@ export default function OpportunitiesPage() {
                       valueUSD: parseFloat(asset.value || asset.valueUSD || '0') || 0,
                       lastUpdated: Date.now(),
                     };
-                  }).filter((asset: any) => (asset.valueUSD || 0) > 0);
+                  }).filter((asset: any) => {
+                    const balance = parseFloat(asset.balanceFormatted);
+                    const value = parseFloat(asset.valueUSD);
+                    // Filter out assets with zero or negligible balance
+                    // Balance must be > 0 (not just >= 0.0001) and value must be > $0.01
+                    return !isNaN(balance) && !isNaN(value) && balance > 0 && value > 0.01;
+                  });
 
                   if (userAssets.length > 0) {
                     usingRealAssets = true;
@@ -135,8 +141,8 @@ export default function OpportunitiesPage() {
         }
       }
 
-      // Fall back to sample assets if no real assets found
-      if (userAssets.length === 0) {
+      // Fall back to sample assets only if no real assets found AND wallet not connected
+      if (userAssets.length === 0 && !walletAddress) {
         const skaito = tokenAddresses.find(t => t.symbol === 'sKAITO');
         const usde = tokenAddresses.find(t => t.symbol === 'USDe');
 
@@ -751,7 +757,8 @@ function RecommendationResults({
                 {result.userAssetRecommendations.map((rec: any, index: number) => {
                   const recId = `user-rec-${index}-${rec.asset?.symbol}`;
                   const isPurchased = purchasedPositions.some((p: any) => p.id === recId);
-                  const adjustment = ratioAdjustments[recId] || rec.strategy?.allocation || { pt: 50, yt: 50 };
+                  // Use user's manual adjustment, or fall back to safe 80/20 (not the API recommendation)
+                  const adjustment = ratioAdjustments[recId] || { pt: 80, yt: 20 };
 
                   return (
                     <RecommendationCard
@@ -785,7 +792,8 @@ function RecommendationResults({
                 {result.suggestedAssetRecommendations.map((rec: any, index: number) => {
                   const recId = `suggested-rec-${index}-${rec.asset?.symbol}`;
                   const isPurchased = purchasedPositions.some((p: any) => p.id === recId);
-                  const adjustment = ratioAdjustments[recId] || rec.strategy?.allocation || { pt: 50, yt: 50 };
+                  // Use user's manual adjustment, or fall back to safe 80/20 (not the API recommendation)
+                  const adjustment = ratioAdjustments[recId] || { pt: 80, yt: 20 };
 
                   return (
                     <RecommendationCard

@@ -115,19 +115,19 @@ export function recommendPoolsForAsset(
   let reasoning: string;
 
   if (scoreDiff < 10) {
-    // Scores are close, recommend split
+    // Scores are close, recommend balanced split
     recommended = 'SPLIT';
     allocation = { pt: 50, yt: 50 };
     expectedAPY = ((bestPT?.apy || 0) + (bestYT?.apy || 0)) / 2;
     reasoning = 'Both PT and YT strategies show similar potential. A balanced split provides diversification.';
   } else if (ptScore > ytScore) {
-    // PT is better
+    // PT is better - recommend more PT
     recommended = 'PT';
     allocation = { pt: 80, yt: 20 };
     expectedAPY = bestPT?.apy || 0;
     reasoning = `PT strategy offers better value with ${(bestPT?.ptDiscount || 0) * 100}% discount and implied yield of ${bestPT?.impliedYield?.toFixed(2)}%.`;
   } else {
-    // YT is better
+    // YT is better - recommend more YT
     recommended = 'YT';
     allocation = { pt: 20, yt: 80 };
     expectedAPY = bestYT?.apy || 0;

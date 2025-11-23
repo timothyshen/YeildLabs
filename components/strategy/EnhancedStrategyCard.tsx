@@ -8,7 +8,7 @@ import { ArrowRight, Zap, ArrowLeftRight } from 'lucide-react';
 import { parseEther } from 'viem';
 import { usePendleMint } from '@/lib/hooks/usePendleMint';
 import { usePendleRedeem } from '@/lib/hooks/usePendleRedeem';
-import { useAccount } from 'wagmi';
+import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
 import { useTokenBalance } from '@/lib/hooks/useTokenBalance';
 import { useTokenAddress } from '@/lib/hooks/useTokenAddress';
 import { useToast } from '@/components/ui/Toast';
@@ -50,19 +50,69 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   const { address } = useAccount();
   const { executeMintPy, isLoading: isMintLoading, isSuccess: isMintSuccess, hash: mintHash, error: mintError } = usePendleMint();
   const { executeRedeemPy, executeRedeemSy, isLoading: isRedeemLoading, isSuccess: isRedeemSuccess, hash: redeemHash, error: redeemError } = usePendleRedeem();
-  const { showToast } = useToast();
-  const { quote: swapQuote, isLoading: isSwapLoading, error: swapError, getQuote, executeSwap, reset: resetSwap } = use1inchSwap();
+  const { showToast, removeToast } = useToast();
+  const { quote: swapQuote, isLoading: isSwapLoading, error: swapError, getQuote, executeSwap, checkAllowance, getApprovalTransaction, reset: resetSwap } = use1inchSwap();
 
   const [activeTab, setActiveTab] = useState<'invest' | 'redeem'>('invest');
   const [mode, setMode] = useState<'default' | 'advanced'>('default');
   const [investmentAmount, setInvestmentAmount] = useState<string>('');
   const [redeemAmount, setRedeemAmount] = useState<string>('');
-  const [ptRatio, setPtRatio] = useState<number>(Math.round(defaultPtPercentage * 100));
-  const [ytRatio, setYtRatio] = useState<number>(Math.round(defaultYtPercentage * 100));
+  // Start with safe 80/20 split by default (noob-friendly)
+  const [ptRatio, setPtRatio] = useState<number>(80);
+  const [ytRatio, setYtRatio] = useState<number>(20);
   const [profitTake, setProfitTake] = useState<number>(15);
   const [lossCut, setLossCut] = useState<number>(-5);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [isExecutingSwapAndBuy, setIsExecutingSwapAndBuy] = useState(false);
+
+  // Toast management - use ref to track current toast to avoid re-creating callback
+  const currentToastIdRef = React.useRef<string | null>(null);
+
+  // Flow state machine for swap process
+  type SwapFlowState = 'idle' | 'checking_allowance' | 'approving' | 'waiting_approval'
+                     | 'swapping' | 'waiting_swap' | 'executing_purchase' | 'complete';
+  const [flowState, setFlowState] = useState<SwapFlowState>('idle');
+
+  // Managed toast function - dismisses previous toast before showing new one
+  const showManagedToast = React.useCallback((toast: Parameters<typeof showToast>[0]) => {
+    if (currentToastIdRef.current) {
+      removeToast(currentToastIdRef.current);
+    }
+    const id = showToast(toast);
+    currentToastIdRef.current = id;
+    return id;
+  }, [removeToast, showToast]);
+
+  // Approval transaction state
+  const {
+    sendTransaction: sendApproval,
+    data: approvalHash,
+    isPending: isApprovePending,
+    error: approvalSendError,
+  } = useSendTransaction();
+  const {
+    isSuccess: isApprovalConfirmed,
+    isLoading: isApprovalConfirming,
+    isError: isApprovalError,
+    error: approvalReceiptError,
+  } = useWaitForTransactionReceipt({
+    hash: approvalHash,
+  });
+
+  // Swap transaction state
+  const {
+    sendTransaction: sendSwap,
+    data: swapHash,
+    isPending: isSwapPending,
+    error: swapSendError,
+  } = useSendTransaction();
+  const {
+    isSuccess: isSwapConfirmed,
+    isError: isSwapError,
+    error: swapReceiptError,
+  } = useWaitForTransactionReceipt({
+    hash: swapHash,
+  });
 
   // Get token symbol from pool
   const tokenSymbol = typeof pool.underlyingAsset === 'string'
@@ -192,6 +242,11 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   // Sync ratios when mode changes
   React.useEffect(() => {
     if (mode === 'default') {
+      // Default mode: Always use safe 80/20 split for noobs
+      setPtRatio(80);
+      setYtRatio(20);
+    } else {
+      // Advanced mode: Use the algorithm's recommended allocation
       setPtRatio(Math.round(defaultPtPercentage * 100));
       setYtRatio(Math.round(defaultYtPercentage * 100));
     }
@@ -299,56 +354,319 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     if (!address || !investmentAmount || !underlyingTokenAddress) return;
 
     try {
-      showToast({
+      const chainId = (pool as any).chainId || 8453;
+
+      // Step 1: Check allowance
+      setFlowState('checking_allowance');
+      showManagedToast({
         type: 'loading',
-        title: 'Swapping USDC',
-        message: 'Please confirm the swap transaction in your wallet...',
-        duration: 0,
+        title: 'Step 1/3: Checking Approval',
+        message: 'Verifying USDC allowance...',
       });
 
-      // Execute swap from USDC to underlying token
-      const swapTxData = await executeSwap({
-        fromToken: BASE_TOKENS.USDC,
-        toToken: underlyingTokenAddress,
-        amount: investmentAmount,
-        fromDecimals: 6,
-        slippage: 1,
-        chainId: (pool as any).chainId || 8453,
+      const allowance = await checkAllowance({
+        tokenAddress: BASE_TOKENS.USDC,
+        walletAddress: address,
+        chainId,
       });
 
-      if (!swapTxData) {
-        throw new Error('Failed to execute swap');
+      // Convert investment amount to token units (USDC has 6 decimals)
+      const amountInTokenUnits = Math.floor(parseFloat(investmentAmount) * 1e6);
+
+      // Step 2: Approve if needed
+      if (!allowance || BigInt(allowance) < BigInt(amountInTokenUnits)) {
+        setFlowState('approving');
+        showManagedToast({
+          type: 'info',
+          title: 'Approval Required',
+          message: 'Please approve USDC spending in your wallet...',
+          duration: 2000,
+        });
+
+        const approvalResponse = await getApprovalTransaction({
+          tokenAddress: BASE_TOKENS.USDC,
+          amount: investmentAmount,
+          decimals: 6,
+          chainId,
+        });
+
+        if (!approvalResponse || !approvalResponse.tx) {
+          throw new Error('Failed to get approval transaction');
+        }
+
+        // Execute approval transaction
+        console.log('Sending approval transaction:', approvalResponse.tx);
+
+        // Construct transaction parameters - don't include gas or value if not provided
+        const approvalTxParams: any = {
+          to: approvalResponse.tx.to as `0x${string}`,
+          data: approvalResponse.tx.data as `0x${string}`,
+        };
+
+        // Only add value if it's greater than 0
+        if (approvalResponse.tx.value && BigInt(approvalResponse.tx.value) > 0n) {
+          approvalTxParams.value = BigInt(approvalResponse.tx.value);
+        }
+
+        // Only add gas if provided
+        if (approvalResponse.tx.gas) {
+          approvalTxParams.gas = BigInt(approvalResponse.tx.gas);
+        }
+
+        console.log('Approval TX params:', approvalTxParams);
+        sendApproval(approvalTxParams);
+
+        // Update flow state
+        setFlowState('waiting_approval');
+        showManagedToast({
+          type: 'loading',
+          title: 'Step 1/3: Approving USDC',
+          message: 'Waiting for approval confirmation...',
+        });
+
+        // The component will re-render when isApprovalConfirmed changes
+        // We'll handle the next steps in a useEffect
+        return;
       }
+
+      // Step 3: Execute swap (only if approval not needed or already approved)
+      showManagedToast({
+        type: 'success',
+        title: 'Approval Not Needed',
+        message: 'Sufficient allowance already set',
+        duration: 1500,
+      });
+
+      setTimeout(() => {
+        proceedWithSwap();
+      }, 1500);
+    } catch (error) {
+      console.error('Swap and buy error:', error);
+      setFlowState('idle');
+      showManagedToast({
+        type: 'error',
+        title: 'Transaction Failed',
+        message: error instanceof Error ? error.message : 'Failed to execute transaction',
+        duration: 5000,
+      });
+      setIsExecutingSwapAndBuy(false);
+    }
+  };
+
+  /**
+   * Proceed with swap after approval is confirmed
+   */
+  const proceedWithSwap = async () => {
+    if (!address || !investmentAmount || !underlyingTokenAddress) return;
+
+    try {
+      const chainId = (pool as any).chainId || 8453;
+
+      setFlowState('swapping');
+      showManagedToast({
+        type: 'loading',
+        title: 'Step 2/3: Swapping USDC',
+        message: `Swapping USDC to ${tokenSymbol}...`,
+      });
+
+      // Get swap transaction data
+      const swapResponse = await fetch('/api/1inch/swap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromToken: BASE_TOKENS.USDC,
+          toToken: underlyingTokenAddress,
+          amount: investmentAmount,
+          fromAddress: address,
+          fromDecimals: 6,
+          slippage: 1,
+          chainId,
+        }),
+      });
+
+      const swapData = await swapResponse.json();
+
+      console.log('📦 Swap API response:', swapData);
+
+      if (!swapData.success) {
+        const errorMsg = swapData.error || 'Failed to get swap transaction';
+        console.error('❌ Swap API error:', errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      if (!swapData.data) {
+        console.error('❌ Invalid swap data:', swapData);
+        throw new Error('Swap API did not return transaction data');
+      }
+
+      // The API returns the transaction directly in data, not in data.tx
+      const swapTx = swapData.data;
+
+      // Execute swap transaction
+      console.log('Sending swap transaction:', swapTx);
+
+      // Construct transaction parameters
+      const swapTxParams: any = {
+        to: swapTx.to as `0x${string}`,
+        data: swapTx.data as `0x${string}`,
+      };
+
+      // Only add value if it's greater than 0
+      if (swapTx.value && BigInt(swapTx.value) > 0n) {
+        swapTxParams.value = BigInt(swapTx.value);
+      }
+
+      // Only add gas if provided
+      if (swapTx.gas) {
+        swapTxParams.gas = BigInt(swapTx.gas);
+      }
+
+      console.log('Swap TX params:', swapTxParams);
+      sendSwap(swapTxParams);
+
+      // Update state to waiting for swap confirmation
+      setFlowState('waiting_swap');
+
+      // Wait for swap confirmation in useEffect
+    } catch (error) {
+      console.error('Swap error:', error);
+      setFlowState('idle');
+      showManagedToast({
+        type: 'error',
+        title: 'Swap Failed',
+        message: error instanceof Error ? error.message : 'Failed to execute swap',
+        duration: 5000,
+      });
+      setIsExecutingSwapAndBuy(false);
+    }
+  };
+
+  // Handle approval confirmation
+  React.useEffect(() => {
+    if (isApprovalConfirmed && isExecutingSwapAndBuy && flowState === 'waiting_approval') {
+      showManagedToast({
+        type: 'success',
+        title: '✅ Approval Successful!',
+        message: 'Proceeding with swap in 2 seconds...',
+        duration: 2000,
+      });
+
+      // Wait for the approval to be fully propagated on-chain
+      setTimeout(() => {
+        console.log('✅ Approval confirmed, proceeding with swap...');
+        proceedWithSwap();
+      }, 2000);
+    }
+  }, [isApprovalConfirmed, isExecutingSwapAndBuy, flowState]);
+
+  // Handle swap confirmation
+  React.useEffect(() => {
+    if (isSwapConfirmed && isExecutingSwapAndBuy && flowState === 'waiting_swap') {
+      // Update flow state
+      setFlowState('executing_purchase');
 
       // Close modal
       setShowSwapModal(false);
       resetSwap();
 
       // Show success message
-      showToast({
+      showManagedToast({
         type: 'success',
-        title: 'Swap Successful!',
-        message: `Swapped USDC to ${tokenSymbol}. Now executing PT/YT purchase...`,
+        title: '✅ Swap Complete!',
+        message: `Swapped USDC to ${tokenSymbol}. Checking received amount...`,
+        duration: 2000,
       });
 
-      // Wait a bit for the swap to settle
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Wait for balances to update on-chain, then execute PT/YT purchase
+      setTimeout(async () => {
+        console.log('✅ Swap confirmed, fetching updated balance...');
 
-      // Now execute the buy PT/YT with the swapped tokens
-      await handleExecute();
-    } catch (error) {
-      console.error('Swap and buy error:', error);
-      showToast({
+        // Wait a bit more for balance to propagate
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Use the actual balance received from swap
+        const actualBalance = userBalance.formatted;
+
+        console.log('💰 Using balance from swap:', {
+          actualBalance,
+          originalInput: investmentAmount,
+          tokenSymbol,
+        });
+
+        // Show step 3 toast with actual amount
+        showManagedToast({
+          type: 'loading',
+          title: 'Step 3/3: Purchasing PT/YT',
+          message: `Using ${actualBalance.toFixed(4)} ${tokenSymbol} received from swap...`,
+        });
+
+        // Execute the PT/YT purchase with ACTUAL received amount
+        handleExecute(actualBalance);
+
+        setIsExecutingSwapAndBuy(false);
+      }, 2500);
+    }
+  }, [isSwapConfirmed, isExecutingSwapAndBuy, flowState, swapHash, tokenSymbol, userBalance.formatted]);
+
+  // Handle approval errors
+  React.useEffect(() => {
+    if (approvalSendError && isExecutingSwapAndBuy) {
+      console.error('Approval send error:', approvalSendError);
+      setFlowState('idle');
+      showManagedToast({
         type: 'error',
-        title: 'Swap Failed',
-        message: error instanceof Error ? error.message : 'Failed to execute swap',
+        title: 'Approval Failed',
+        message: approvalSendError.message || 'Failed to send approval transaction. Please try again.',
+        duration: 5000,
       });
-    } finally {
       setIsExecutingSwapAndBuy(false);
     }
-  };
+  }, [approvalSendError, isExecutingSwapAndBuy]);
 
-  const handleExecute = async () => {
+  React.useEffect(() => {
+    if (isApprovalError && approvalReceiptError && isExecutingSwapAndBuy) {
+      console.error('Approval receipt error:', approvalReceiptError);
+      setFlowState('idle');
+      showManagedToast({
+        type: 'error',
+        title: 'Approval Transaction Failed',
+        message: 'The approval transaction failed on-chain. Please try again.',
+        duration: 5000,
+      });
+      setIsExecutingSwapAndBuy(false);
+    }
+  }, [isApprovalError, approvalReceiptError, isExecutingSwapAndBuy]);
+
+  // Handle swap errors
+  React.useEffect(() => {
+    if (swapSendError && isExecutingSwapAndBuy) {
+      console.error('Swap send error:', swapSendError);
+      setFlowState('idle');
+      showManagedToast({
+        type: 'error',
+        title: 'Swap Failed',
+        message: swapSendError.message || 'Failed to send swap transaction. Please try again.',
+        duration: 5000,
+      });
+      setIsExecutingSwapAndBuy(false);
+    }
+  }, [swapSendError, isExecutingSwapAndBuy]);
+
+  React.useEffect(() => {
+    if (isSwapError && swapReceiptError && isExecutingSwapAndBuy) {
+      console.error('Swap receipt error:', swapReceiptError);
+      setFlowState('idle');
+      showManagedToast({
+        type: 'error',
+        title: 'Swap Transaction Failed',
+        message: 'The swap transaction failed on-chain. Please try again.',
+        duration: 5000,
+      });
+      setIsExecutingSwapAndBuy(false);
+    }
+  }, [isSwapError, swapReceiptError, isExecutingSwapAndBuy]);
+
+  const handleExecute = async (overrideAmount?: number) => {
     if (!address) {
       showToast({
         type: 'error',
@@ -358,7 +676,10 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       return;
     }
 
-    if (!investmentAmount || parseFloat(investmentAmount) <= 0) {
+    // Use override amount if provided (from swap), otherwise use user input
+    const amountToUse = overrideAmount !== undefined ? overrideAmount.toString() : investmentAmount;
+
+    if (!amountToUse || parseFloat(amountToUse) <= 0) {
       showToast({
         type: 'error',
         title: 'Invalid Amount',
@@ -367,7 +688,8 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       return;
     }
 
-    if (!hasSufficientBalance) {
+    // Skip balance check if using override amount (coming from swap)
+    if (overrideAmount === undefined && !hasSufficientBalance) {
       showToast({
         type: 'error',
         title: 'Insufficient Balance',
@@ -513,7 +835,13 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       // Note: mintPyFromToken mints both PT and YT in equal amounts (1:1 ratio)
       // To achieve custom ratios, we would need to swap after minting
       // For MVP, we'll mint the total amount which gives equal PT + YT
-      const totalAmountWei = parseEther(investmentAmount).toString();
+      const totalAmountWei = parseEther(amountToUse).toString();
+
+      console.log('🔍 [DEBUG] Executing mint with amount:', {
+        originalInput: investmentAmount,
+        actualAmount: amountToUse,
+        isFromSwap: overrideAmount !== undefined,
+      });
       
       await executeMintPy({
         chainId: (pool as any).chainId || 8453,
@@ -670,29 +998,63 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   // Show success/error notifications for mint
   React.useEffect(() => {
     if (isMintSuccess && mintHash) {
-      showToast({
-        type: 'success',
-        title: 'Strategy Executed Successfully!',
-        message: `Transaction confirmed. PT + YT tokens minted.`,
-        action: {
-          label: 'View on BaseScan',
-          onClick: () => {
-            window.open(`https://basescan.org/tx/${mintHash}`, '_blank');
+      // If this was part of the swap flow, show completion message
+      if (flowState === 'executing_purchase') {
+        setFlowState('complete');
+        showManagedToast({
+          type: 'success',
+          title: '🎉 All Complete!',
+          message: 'Swap & PT/YT purchase successful!',
+          action: {
+            label: 'View Transaction',
+            onClick: () => {
+              window.open(`https://basescan.org/tx/${mintHash}`, '_blank');
+            },
           },
-        },
-      });
+          duration: 7000,
+        });
+
+        // Reset flow state after a delay
+        setTimeout(() => {
+          setFlowState('idle');
+        }, 7000);
+      } else {
+        // Normal mint without swap flow
+        showToast({
+          type: 'success',
+          title: 'Strategy Executed Successfully!',
+          message: `Transaction confirmed. PT + YT tokens minted.`,
+          action: {
+            label: 'View on BaseScan',
+            onClick: () => {
+              window.open(`https://basescan.org/tx/${mintHash}`, '_blank');
+            },
+          },
+        });
+      }
     }
-  }, [isMintSuccess, mintHash, showToast]);
+  }, [isMintSuccess, mintHash, flowState, showToast]);
 
   React.useEffect(() => {
     if (mintError) {
-      showToast({
-        type: 'error',
-        title: 'Transaction Error',
-        message: mintError.message || 'An error occurred during execution',
-      });
+      // Reset flow state if error occurred during swap flow
+      if (flowState === 'executing_purchase') {
+        setFlowState('idle');
+        showManagedToast({
+          type: 'error',
+          title: 'PT/YT Purchase Failed',
+          message: mintError.message || 'Failed to execute strategy after swap',
+          duration: 5000,
+        });
+      } else {
+        showToast({
+          type: 'error',
+          title: 'Transaction Error',
+          message: mintError.message || 'An error occurred during execution',
+        });
+      }
     }
-  }, [mintError, showToast]);
+  }, [mintError, flowState, showToast]);
 
   // Show success/error notifications for redeem
   React.useEffect(() => {
@@ -815,9 +1177,9 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
               YT {ytRatio}%
             </span>
           </div>
-          
+
           {mode === 'default' ? (
-            <Progress value={ytRatio} className="h-2" />
+            <Progress value={ptRatio} className="h-2" />
           ) : (
             <div className="space-y-2">
               <input
@@ -828,7 +1190,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
                 onChange={(e) => handleRatioChange(parseInt(e.target.value))}
                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
               />
-              <Progress value={ytRatio} className="h-2" />
+              <Progress value={ptRatio} className="h-2" />
             </div>
           )}
         </div>
@@ -836,6 +1198,13 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         {/* Advanced Mode Settings */}
         {mode === 'advanced' && (
           <div className="mt-4 space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+            {/* Show algorithm recommendation */}
+            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs">
+              <span className="font-semibold text-blue-700 dark:text-blue-300">💡 Algorithm suggests:</span>
+              <span className="text-blue-600 dark:text-blue-400 ml-1">
+                PT {Math.round(defaultPtPercentage * 100)}% / YT {Math.round(defaultYtPercentage * 100)}%
+              </span>
+            </div>
             <div className="flex items-center justify-between">
               <label className="text-sm text-gray-600 dark:text-gray-400">
                 Profit Take:
@@ -892,13 +1261,26 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Investment Amount (USD)
           </label>
-          <input
-            type="number"
-            value={investmentAmount}
-            onChange={(e) => setInvestmentAmount(e.target.value)}
-            placeholder="0.00"
-            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
-          />
+          <div className="relative">
+            <input
+              type="number"
+              value={investmentAmount}
+              onChange={(e) => setInvestmentAmount(e.target.value)}
+              placeholder="0.00"
+              className="w-full px-4 py-2 pr-20 border rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => {
+                if (userBalance.formatted > 0) {
+                  setInvestmentAmount(userBalance.formatted.toString());
+                }
+              }}
+              disabled={!address || userBalance.isLoading || !isValidTokenAddress}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              MAX
+            </button>
+          </div>
         </div>
 
         {/* Balance Display */}
