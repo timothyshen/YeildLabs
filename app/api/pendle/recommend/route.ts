@@ -13,8 +13,7 @@ import { BASE_CHAIN_ID } from '@/lib/pendle/config';
  * 
  * POST /api/pendle/recommend
  * Body: {
- *   address?: string; // Optional, will fetch from Octav if not provided
- *   assets?: WalletAsset[]; // Optional, will fetch from Octav if not provided
+ *   assets: WalletAsset[]; // Required: Array of user assets
  *   riskLevel?: 'conservative' | 'neutral' | 'aggressive';
  *   chainId?: number;
  * }
@@ -23,47 +22,21 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const {
-      address,
       assets,
       riskLevel = 'neutral',
       chainId = BASE_CHAIN_ID,
     } = body;
 
-    // If assets not provided, try to fetch from Octav
-    let userAssets: WalletAsset[] = assets || [];
-
-    if (!userAssets.length && address) {
-      try {
-        console.log(`📊 Fetching assets from Octav for ${address}`);
-        const octavResponse = await fetch(
-          `${request.nextUrl.origin}/api/octav?address=${address}`
-        );
-        const octavData = await octavResponse.json();
-
-        if (octavData.success && octavData.data?.assets) {
-          // Transform Octav assets to WalletAsset format
-          userAssets = octavData.data.assets.map((asset: any) => ({
-            token: asset.token || asset.address || '',
-            symbol: asset.symbol || '',
-            balance: asset.balance || asset.balanceFormatted || 0,
-            valueUSD: asset.valueUSD || 0,
-          }));
-          console.log(`✅ Fetched ${userAssets.length} assets from Octav`);
-        }
-      } catch (error) {
-        console.warn('⚠️ Could not fetch assets from Octav:', error);
-      }
-    }
-
-    if (!userAssets.length) {
+    // Assets are required
+    if (!assets || !Array.isArray(assets) || assets.length === 0) {
       return NextResponse.json<ApiResponse<null>>({
         success: false,
-        error: 'No assets provided or found. Please provide assets array or wallet address.',
+        error: 'Assets array is required. Please provide an array of assets.',
       }, { status: 400 });
     }
 
     // Filter out assets with zero value
-    userAssets = userAssets.filter((asset) => (asset.valueUSD || 0) > 0);
+    const userAssets: WalletAsset[] = assets.filter((asset) => (asset.valueUSD || 0) > 0);
 
     if (!userAssets.length) {
       return NextResponse.json<ApiResponse<null>>({

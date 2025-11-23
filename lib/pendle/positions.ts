@@ -1,17 +1,16 @@
 /**
  * Pendle Position Fetcher
  * 
- * Combines Pendle API market data with on-chain token balances
- * to provide complete position information
+ * Uses Pendle API /v1/dashboard/positions/database/{address} endpoint
+ * to fetch user positions directly from Pendle's database
  */
 
-import { fetchMarkets } from './apiClient';
-import { getTokenBalance, getTokenBalances } from './balances';
-import type { PendlePosition } from '@/types';
-import type { PendlePool } from '@/types';
+import { fetchUserPositions, fetchMarkets } from './apiClient';
+import type { PendlePosition, PendlePool } from '@/types/unified';
 
 /**
  * Get user's Pendle positions for a specific chain
+ * Uses Pendle's positions database API endpoint
  */
 export async function getUserPendlePositions(
   userAddress: string,
@@ -19,133 +18,107 @@ export async function getUserPendlePositions(
 ): Promise<PendlePosition[]> {
   console.log(`🔍 Fetching Pendle positions for ${userAddress} on chain ${chainId}`);
 
-  // 1. Fetch all markets from API
-  const markets = await fetchMarkets(chainId);
+  // 1. Fetch positions from Pendle database API
+  let positionsData;
+  try {
+    positionsData = await fetchUserPositions(userAddress, { filterUsd: 0.1 });
+  } catch (error) {
+    console.error('❌ Error fetching positions from Pendle API:', error);
+    return [];
+  }
   
-  if (!markets || markets.length === 0) {
-    console.log('⚠️ No markets found');
+  if (!positionsData || positionsData.length === 0) {
+    console.log('⚠️ No positions found in database');
     return [];
   }
 
-  console.log(`📊 Found ${markets.length} markets, checking balances...`);
+  // 2. Filter for the requested chainId
+  const chainData = positionsData.find((data: any) => data.chainId === chainId);
+  
+  if (!chainData) {
+    const availableChains = positionsData.map((d: any) => d.chainId).join(', ');
+    console.log(`⚠️ No positions found for chain ${chainId}. Available chains: ${availableChains || 'none'}`);
+    return [];
+  }
 
-  // 2. Extract all token addresses we need to check
-  const tokenAddresses = new Set<string>();
+  console.log(`📊 Found ${chainData.totalOpen || 0} open positions, ${chainData.totalClosed || 0} closed positions for chain ${chainId}`);
+
+  // 3. Fetch markets to get pool details
+  const markets = await fetchMarkets(chainId);
   const marketMap = new Map<string, any>();
-
   markets.forEach((market) => {
-    if (market.address) {
-      marketMap.set(market.address, market);
-    }
-
-    // Extract addresses from chainId-address format
-    const extractAddress = (token: string) => {
-      if (!token) return null;
-      const parts = token.split('-');
-      return parts.length > 1 ? parts[1] : token;
-    };
-
-    const ptAddress = extractAddress(market.pt);
-    const ytAddress = extractAddress(market.yt);
-    const syAddress = extractAddress(market.sy);
-    const lpAddress = market.address; // LP token is the market address
-
-    if (ptAddress) tokenAddresses.add(ptAddress.toLowerCase());
-    if (ytAddress) tokenAddresses.add(ytAddress.toLowerCase());
-    if (syAddress) tokenAddresses.add(syAddress.toLowerCase());
-    if (lpAddress) tokenAddresses.add(lpAddress.toLowerCase());
+    marketMap.set(market.address.toLowerCase(), market);
   });
 
-  // 3. Get all balances in parallel
-  const balancePromises = Array.from(tokenAddresses).map((address) =>
-    getTokenBalance(userAddress, address).then((balance) => ({
-      address: address.toLowerCase(),
-      balance,
-    }))
-  );
-
-  const balances = await Promise.all(balancePromises);
-  const balanceMap = new Map(
-    balances.map((b) => [b.address, b.balance])
-  );
-
-  console.log(`✅ Checked ${tokenAddresses.size} token balances`);
-
-  // 4. Build positions from markets with non-zero balances
+  // 4. Transform open positions
   const positions: PendlePosition[] = [];
-
-  for (const market of markets) {
-    const extractAddress = (token: string) => {
-      if (!token) return null;
-      const parts = token.split('-');
-      return parts.length > 1 ? parts[1] : token;
-    };
-
-    const ptAddress = extractAddress(market.pt)?.toLowerCase();
-    const ytAddress = extractAddress(market.yt)?.toLowerCase();
-    const syAddress = extractAddress(market.sy)?.toLowerCase();
-    const lpAddress = market.address?.toLowerCase();
-
-    const ptBalance = ptAddress ? balanceMap.get(ptAddress) : null;
-    const ytBalance = ytAddress ? balanceMap.get(ytAddress) : null;
-    const syBalance = syAddress ? balanceMap.get(syAddress) : null;
-    const lpBalance = lpAddress ? balanceMap.get(lpAddress) : null;
-
-    // Check if user has any position in this market
-    const hasPosition =
-      (ptBalance && ptBalance.formatted > 0) ||
-      (ytBalance && ytBalance.formatted > 0) ||
-      (syBalance && syBalance.formatted > 0) ||
-      (lpBalance && lpBalance.formatted > 0);
-
-    if (!hasPosition) {
-      continue; // Skip markets with no position
-    }
-
-    // Build position object
-    const position = await buildPosition(
-      market,
-      {
-        pt: ptBalance,
-        yt: ytBalance,
-        sy: syBalance,
-        lp: lpBalance,
-      },
-      chainId
-    );
-
+  
+  const openPositions = chainData.openPositions || [];
+  for (const pos of openPositions) {
+    const position = await transformPosition(pos, chainId, marketMap, false, chainData);
     if (position) {
       positions.push(position);
     }
   }
 
-  console.log(`✅ Found ${positions.length} active positions`);
+  // 5. Optionally include closed positions (for historical tracking)
+  // For now, we'll only return open positions
+  // const closedPositions = chainData.closedPositions || [];
+  // for (const pos of closedPositions) {
+  //   const position = await transformPosition(pos, chainId, marketMap, true);
+  //   if (position) {
+  //     positions.push(position);
+  //   }
+  // }
+
+  console.log(`✅ Transformed ${positions.length} positions`);
   return positions;
 }
 
 /**
- * Build a PendlePosition from market data and balances
+ * Transform Pendle API position data to our PendlePosition format
+ * 
+ * Position structure from API:
+ * {
+ *   marketId: "8453-0x...", // chainId-address format
+ *   pt: { valuation: number, balance: string },
+ *   yt: { valuation: number, balance: string },
+ *   lp: { valuation: number, balance: string, activeBalance: string }
+ * }
  */
-async function buildPosition(
-  market: any,
-  balances: {
-    pt: { raw: bigint; formatted: number; decimals: number } | null;
-    yt: { raw: bigint; formatted: number; decimals: number } | null;
-    sy: { raw: bigint; formatted: number; decimals: number } | null;
-    lp: { raw: bigint; formatted: number; decimals: number } | null;
-  },
-  chainId: number
+async function transformPosition(
+  pos: any,
+  chainId: number,
+  marketMap: Map<string, any>,
+  isClosed: boolean,
+  chainData: any
 ): Promise<PendlePosition | null> {
   try {
-    // Parse expiry date
-    const expiryDate = market.expiry ? new Date(market.expiry) : null;
+    // Extract market address from marketId (format: "chainId-address")
+    const marketId = pos.marketId || '';
+    const marketAddress = marketId.split('-').pop()?.toLowerCase() || '';
+    
+    if (!marketAddress) {
+      console.warn('⚠️ Invalid marketId format:', marketId);
+      return null;
+    }
+
+    // Get market data
+    const market = marketMap.get(marketAddress);
+    if (!market) {
+      console.warn(`⚠️ Market not found for address ${marketAddress}`);
+      // Continue with limited data if market not found
+    }
+
+    // Parse expiry date from market
+    const expiryDate = market?.expiry ? new Date(market.expiry) : null;
     const maturity = expiryDate ? Math.floor(expiryDate.getTime() / 1000) : 0;
     const now = Date.now() / 1000;
     const daysToMaturity = maturity > now ? Math.ceil((maturity - now) / 86400) : 0;
 
     // Extract underlying asset symbol
     let underlyingAsset = 'UNKNOWN';
-    if (market.name) {
+    if (market?.name) {
       const nameParts = market.name.split('-');
       if (nameParts.length > 1 && nameParts[0] === 'PT') {
         underlyingAsset = nameParts[1];
@@ -154,54 +127,119 @@ async function buildPosition(
       }
     }
 
-    // Build pool object (simplified, can be enhanced with full pool data)
-    // Using legacy PendlePool type which has underlyingAsset as string
-    const pool: PendlePool = {
-      address: market.address,
-      name: market.name || `PT-${underlyingAsset}`,
-      symbol: market.name || `PT-${underlyingAsset}`,
-      underlyingAsset: underlyingAsset, // Legacy type uses string
-      maturity,
-      tvl: 0, // Will be populated if we fetch pool details
-      apy: 0, // Will be populated if we fetch pool details
-      impliedYield: 0,
-      ptPrice: 0.95, // Default, should be fetched from API
-      ytPrice: 0.05, // Default, should be fetched from API
-      ptDiscount: 0.05,
-      daysToMaturity,
-      strategyTag: 'Neutral',
+    // Parse balances (API returns as strings, may be negative for closed positions)
+    const ptBalanceRaw = pos.pt?.balance || '0';
+    const ytBalanceRaw = pos.yt?.balance || '0';
+    const lpBalanceRaw = pos.lp?.balance || '0';
+    const lpActiveBalanceRaw = pos.lp?.activeBalance || '0';
+
+    // Convert to numbers (handle negative balances for closed positions)
+    const ptBalance = BigInt(ptBalanceRaw);
+    const ytBalance = BigInt(ytBalanceRaw);
+    const lpBalance = BigInt(lpBalanceRaw);
+    const lpActiveBalance = BigInt(lpActiveBalanceRaw);
+
+    // Use absolute values for formatted amounts
+    const ptBalanceFormatted = Number(ptBalance) / 1e18; // Assuming 18 decimals
+    const ytBalanceFormatted = Number(ytBalance) / 1e18;
+    const lpBalanceFormatted = Number(lpBalance) / 1e18;
+    const lpActiveBalanceFormatted = Number(lpActiveBalance) / 1e18;
+
+    // Get valuations from API (already in USD)
+    const ptValuation = Math.abs(pos.pt?.valuation || 0);
+    const ytValuation = Math.abs(pos.yt?.valuation || 0);
+    const lpValuation = Math.abs(pos.lp?.valuation || 0);
+
+    // Calculate current value
+    const currentValue = ptValuation + ytValuation + lpValuation;
+
+    // Extract token addresses from market
+    const extractTokenAddress = (tokenStr: string) => {
+      if (!tokenStr) return '0x';
+      const parts = tokenStr.split('-');
+      return parts.length > 1 ? parts[1] : tokenStr;
     };
 
-    // Calculate position values
-    // Note: This is simplified. In production, you'd fetch current prices from API
-    const ptValue = balances.pt?.formatted || 0;
-    const ytValue = balances.yt?.formatted || 0;
-    const syValue = balances.sy?.formatted || 0;
-    const lpValue = balances.lp?.formatted || 0;
+    const ptAddress = market?.pt ? extractTokenAddress(market.pt) : '0x';
+    const ytAddress = market?.yt ? extractTokenAddress(market.yt) : '0x';
+    const syAddress = market?.sy ? extractTokenAddress(market.sy) : '0x';
 
-    // For now, use simplified value calculation
-    // In production, fetch actual token prices from API
-    const currentValue = ptValue + ytValue + syValue + lpValue;
-    const costBasis = currentValue * 0.95; // Placeholder - would need transaction history
-    const unrealizedPnL = currentValue - costBasis;
-    const realizedPnL = 0; // Would need transaction history
+    // Build pool object with all required fields
+    const pool: PendlePool = {
+      address: marketAddress,
+      name: market?.name || `PT-${underlyingAsset}`,
+      symbol: market?.name || `PT-${underlyingAsset}`,
+      underlyingAsset: {
+        address: market?.underlyingAsset ? extractTokenAddress(market.underlyingAsset) : '0x',
+        symbol: underlyingAsset,
+        name: underlyingAsset,
+        decimals: 18,
+        chainId: chainId,
+        priceUSD: 1,
+      },
+      syToken: {
+        address: syAddress,
+        symbol: `SY-${underlyingAsset}`,
+        name: `SY-${underlyingAsset}`,
+        decimals: 18,
+        chainId: chainId,
+        priceUSD: 1,
+      },
+      ptToken: {
+        address: ptAddress,
+        symbol: `PT-${underlyingAsset}`,
+        name: `PT-${underlyingAsset}`,
+        decimals: 18,
+        chainId: chainId,
+        priceUSD: market?.details?.ptPrice || 0.95,
+      },
+      ytToken: {
+        address: ytAddress,
+        symbol: `YT-${underlyingAsset}`,
+        name: `YT-${underlyingAsset}`,
+        decimals: 18,
+        chainId: chainId,
+        priceUSD: market?.details?.ytPrice || 0.05,
+      },
+      maturity,
+      maturityDate: expiryDate?.toISOString() || '',
+      daysToMaturity,
+      isExpired: maturity < Date.now() / 1000,
+      tvl: market?.details?.liquidity || 0,
+      apy: (market?.details?.aggregatedApy || 0) * 100, // Convert to percentage
+      impliedYield: (market?.details?.impliedApy || 0) * 100,
+      ptPrice: market?.details?.ptPrice || 0.95,
+      ytPrice: market?.details?.ytPrice || 0.05,
+      ptDiscount: market?.details?.ptDiscount || 0.05,
+      syPrice: 1,
+      strategyTag: 'Neutral',
+      riskLevel: 'neutral',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    // Calculate PnL (simplified - API provides valuations)
+    // For closed positions, valuations are typically negative
+    const costBasis = currentValue * 0.95; // Placeholder
+    const unrealizedPnL = isClosed ? 0 : (currentValue - costBasis);
+    const realizedPnL = isClosed ? (currentValue - costBasis) : 0;
     const totalPnL = unrealizedPnL + realizedPnL;
     const pnlPercent = costBasis > 0 ? (totalPnL / costBasis) * 100 : 0;
 
-    // Calculate maturity value (PT will be worth 1 at maturity)
-    const maturityValue = ptValue * 1.0 + ytValue * 0 + syValue * 1.0 + lpValue * 1.0;
+    // Calculate maturity value
+    const maturityValue = ptBalanceFormatted * 1.0 + lpBalanceFormatted * 1.0;
 
     const position: PendlePosition = {
-      poolAddress: market.address,
+      poolAddress: marketAddress,
       pool,
-      ptBalance: balances.pt?.raw.toString() || '0',
-      ptBalanceFormatted: balances.pt?.formatted || 0,
-      ytBalance: balances.yt?.raw.toString() || '0',
-      ytBalanceFormatted: balances.yt?.formatted || 0,
-      syBalance: balances.sy?.raw.toString() || '0',
-      syBalanceFormatted: balances.sy?.formatted || 0,
-      lpBalance: balances.lp?.raw.toString() || '0',
-      lpBalanceFormatted: balances.lp?.formatted || 0,
+      ptBalance: ptBalance.toString(),
+      ptBalanceFormatted: Math.abs(ptBalanceFormatted),
+      ytBalance: ytBalance.toString(),
+      ytBalanceFormatted: Math.abs(ytBalanceFormatted),
+      syBalance: '0', // SY positions are separate in API
+      syBalanceFormatted: 0,
+      lpBalance: lpBalance.toString(),
+      lpBalanceFormatted: Math.abs(lpBalanceFormatted),
       costBasis,
       currentValue,
       maturityValue,
@@ -214,12 +252,12 @@ async function buildPosition(
       autoRollEnabled: false,
       autoRollDaysBeforeMaturity: 7,
       firstAcquired: now, // Placeholder
-      lastUpdated: now,
+      lastUpdated: chainData?.updatedAt ? new Date(chainData.updatedAt).getTime() / 1000 : now,
     };
 
     return position;
   } catch (error) {
-    console.error(`Error building position for market ${market.address}:`, error);
+    console.error(`Error transforming position:`, error);
     return null;
   }
 }

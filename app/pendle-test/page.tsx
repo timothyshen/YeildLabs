@@ -1,16 +1,34 @@
 'use client';
 
 import { useState } from 'react';
+import { useAccount } from 'wagmi';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorState } from '@/components/ui/ErrorState';
 
+interface PurchasedPosition {
+  id: string;
+  assetSymbol: string;
+  poolAddress: string;
+  poolName: string;
+  strategy: 'PT' | 'YT' | 'SPLIT';
+  ptAllocation: number;
+  ytAllocation: number;
+  purchaseAmount: number;
+  purchaseDate: number;
+  expectedAPY: number;
+  currentValue: number;
+}
+
 export default function PendleTestPage() {
+  const { address: connectedAddress, isConnected } = useAccount();
   const [testType, setTestType] = useState<'pools' | 'positions' | 'recommend'>('pools');
   const [address, setAddress] = useState('');
   const [result, setResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [purchasedPositions, setPurchasedPositions] = useState<PurchasedPosition[]>([]);
+  const [ratioAdjustments, setRatioAdjustments] = useState<Record<string, { pt: number; yt: number }>>({});
 
   const testPools = async () => {
     setIsLoading(true);
@@ -38,8 +56,11 @@ export default function PendleTestPage() {
   };
 
   const testPositions = async () => {
-    if (!address) {
-      setError('Please enter a wallet address');
+    // Use connected wallet address if available, otherwise use manual input
+    const walletAddress = connectedAddress || address;
+    
+    if (!walletAddress) {
+      setError('Please connect a wallet or enter a wallet address');
       return;
     }
 
@@ -48,7 +69,7 @@ export default function PendleTestPage() {
     setResult(null);
 
     try {
-      const response = await fetch(`/api/pendle/positions?address=${address}&chainId=8453`);
+      const response = await fetch(`/api/pendle/positions?address=${walletAddress}&chainId=8453`);
       const data = await response.json();
 
       if (data.success) {
@@ -69,30 +90,99 @@ export default function PendleTestPage() {
     setResult(null);
 
     try {
-      const body: any = {
+      // Use connected wallet address if available, otherwise use manual input
+      const walletAddress = connectedAddress || address;
+      let userAssets: any[] = [];
+      let usingRealAssets = false;
+
+      // Try to fetch real assets from Octav if wallet is connected
+      if (walletAddress) {
+        try {
+          const octavResponse = await fetch(`/api/octav?address=${walletAddress}&includeImages=false&waitForSync=false`);
+          const octavData = await octavResponse.json();
+
+          if (octavData.success && octavData.data?.assets && octavData.data.assets.length > 0) {
+            // Transform Octav assets to unified WalletAsset format
+            userAssets = octavData.data.assets.map((asset: any) => {
+              // Handle both legacy and unified formats
+              if (asset.token && typeof asset.token === 'object') {
+                // Already in unified format
+                return {
+                  token: asset.token,
+                  balance: asset.balance?.toString() || '0',
+                  balanceFormatted: asset.balanceFormatted || parseFloat(asset.balance || '0') || 0,
+                  valueUSD: asset.valueUSD || 0,
+                  lastUpdated: asset.lastUpdated || Date.now(),
+                };
+              } else {
+                // Legacy format - transform to unified
+                return {
+                  token: {
+                    address: asset.token || asset.address || '',
+                    symbol: asset.symbol || '',
+                    name: asset.name || asset.symbol || '',
+                    decimals: asset.decimals || 18,
+                    chainId: asset.chainId || 8453,
+                    priceUSD: asset.priceUSD || asset.valueUSD || 0,
+                  },
+                  balance: asset.balance?.toString() || '0',
+                  balanceFormatted: asset.balance || asset.balanceFormatted || 0,
+                  valueUSD: asset.valueUSD || 0,
+                  lastUpdated: Date.now(),
+                };
+              }
+            }).filter((asset: any) => (asset.valueUSD || 0) > 0); // Filter out zero-value assets
+
+            if (userAssets.length > 0) {
+              usingRealAssets = true;
+              console.log(`✅ Using ${userAssets.length} real assets from wallet`);
+            }
+          }
+        } catch (octavError) {
+          console.warn('⚠️ Could not fetch assets from Octav, using sample assets:', octavError);
+        }
+      }
+
+      // Fall back to sample assets if no real assets found
+      if (userAssets.length === 0) {
+        userAssets = [
+          {
+            token: {
+              address: '0x548d3b444da39686d1a6f1544781d154e7cd1ef7',
+              symbol: 'sKAITO',
+              name: 'sKAITO',
+              decimals: 18,
+              chainId: 8453,
+              priceUSD: 1,
+            },
+            balance: '1000000000000000000',
+            balanceFormatted: 1,
+            valueUSD: 1000,
+            lastUpdated: Date.now(),
+          },
+          {
+            token: {
+              address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+              symbol: 'USDC',
+              name: 'USD Coin',
+              decimals: 6,
+              chainId: 8453,
+              priceUSD: 1,
+            },
+            balance: '1000000000',
+            balanceFormatted: 1000,
+            valueUSD: 1000,
+            lastUpdated: Date.now(),
+          },
+        ];
+        console.log('📝 Using sample assets for testing');
+      }
+
+      const body = {
+        assets: userAssets,
         riskLevel: 'neutral',
         chainId: 8453,
       };
-
-      if (address) {
-        body.address = address;
-      } else {
-        // Use sample assets
-        body.assets = [
-          {
-            token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-            symbol: 'USDC',
-            balance: 1000,
-            valueUSD: 1000,
-          },
-          {
-            token: '0x...',
-            symbol: 'sUSDe',
-            balance: 500,
-            valueUSD: 500,
-          },
-        ];
-      }
 
       const response = await fetch('/api/pendle/recommend', {
         method: 'POST',
@@ -103,7 +193,15 @@ export default function PendleTestPage() {
       const data = await response.json();
 
       if (data.success) {
-        setResult(data.data);
+        // Add metadata about asset source
+        setResult({
+          ...data.data,
+          _metadata: {
+            usingRealAssets,
+            assetCount: userAssets.length,
+            walletAddress: walletAddress || 'none',
+          },
+        });
       } else {
         setError(data.error || 'Failed to generate recommendations');
       }
@@ -175,18 +273,78 @@ export default function PendleTestPage() {
             </button>
           </div>
 
-          {(testType === 'positions' || testType === 'recommend') && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Wallet Address (Optional for Recommendations)
-              </label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="0x..."
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
+          {testType === 'positions' && (
+            <div className="mb-4 space-y-3">
+              {isConnected && connectedAddress ? (
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <p className="text-sm font-semibold text-green-900 dark:text-green-200 mb-1">
+                    ✅ Using Connected Wallet
+                  </p>
+                  <p className="text-xs text-green-800 dark:text-green-100 font-mono">
+                    {connectedAddress}
+                  </p>
+                  <p className="text-xs text-green-700 dark:text-green-300 mt-2">
+                    Positions will be fetched automatically for this wallet.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Wallet Address (or connect a wallet)
+                  </label>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="0x..."
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Connect a wallet to automatically use your address, or enter an address manually.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {testType === 'recommend' && (
+            <div className="mb-4 space-y-3">
+              {isConnected && connectedAddress ? (
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <p className="text-sm font-semibold text-green-900 dark:text-green-200 mb-1">
+                    ✅ Using Connected Wallet Assets
+                  </p>
+                  <p className="text-xs text-green-800 dark:text-green-100 font-mono">
+                    {connectedAddress}
+                  </p>
+                  <p className="text-xs text-green-700 dark:text-green-300 mt-2">
+                    Recommendations will be based on your actual wallet assets from Octav.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+                      💡 Connect a wallet or enter an address to use real assets
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      Otherwise, sample assets (sKAITO and USDC) will be used for testing.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Wallet Address (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="0x... (leave empty to use sample assets)"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -276,6 +434,17 @@ export default function PendleTestPage() {
 
             {testType === 'recommend' && (
               <div>
+                {result._metadata && (
+                  <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      {result._metadata.usingRealAssets ? (
+                        <span className="text-green-600 dark:text-green-400">✅ Using {result._metadata.assetCount} real assets from wallet</span>
+                      ) : (
+                        <span className="text-blue-600 dark:text-blue-400">📝 Using sample assets for testing</span>
+                      )}
+                    </p>
+                  </div>
+                )}
                 <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
                   <p className="text-sm font-semibold text-green-900 dark:text-green-200 mb-2">
                     Summary
@@ -290,34 +459,210 @@ export default function PendleTestPage() {
                     Potential Value: ${result.totalPotentialValue?.toFixed(2) || 0}
                   </p>
                 </div>
-                <div className="space-y-4">
-                  {result.recommendations?.map((rec: any, index: number) => (
-                    <div
-                      key={index}
-                      className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
-                    >
-                      <p className="font-semibold text-gray-900 dark:text-white mb-2">
-                        {rec.asset?.symbol}
-                      </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        Balance: {rec.asset?.balance} • Value: ${rec.asset?.valueUSD?.toFixed(2)}
-                      </p>
-                      <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
-                        <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">
-                          Strategy: {rec.strategy?.recommended}
-                        </p>
-                        <p className="text-sm text-blue-800 dark:text-blue-100">
-                          Allocation: PT {rec.strategy?.allocation?.pt}% / YT {rec.strategy?.allocation?.yt}%
-                        </p>
-                        <p className="text-sm text-blue-800 dark:text-blue-100">
-                          Expected APY: {rec.strategy?.expectedAPY?.toFixed(2)}%
-                        </p>
-                        <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                          {rec.strategy?.reasoning}
-                        </p>
-                      </div>
+
+                {/* Purchased Positions Section */}
+                {purchasedPositions.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3">
+                      Your Positions (Test Mode)
+                    </h4>
+                    <div className="space-y-3">
+                      {purchasedPositions.map((pos) => (
+                        <div
+                          key={pos.id}
+                          className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl border border-purple-200 dark:border-purple-800"
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <p className="font-bold text-gray-900 dark:text-white">
+                                {pos.assetSymbol} - {pos.poolName}
+                              </p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                Purchased: ${pos.purchaseAmount.toFixed(2)} • {new Date(pos.purchaseDate).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setPurchasedPositions(prev => prev.filter(p => p.id !== pos.id));
+                                setRatioAdjustments(prev => {
+                                  const newRatios = { ...prev };
+                                  delete newRatios[pos.id];
+                                  return newRatios;
+                                });
+                              }}
+                              className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors"
+                            >
+                              Sell
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 mb-3">
+                            <div className="p-2 bg-white dark:bg-gray-800 rounded-lg">
+                              <p className="text-xs text-gray-600 dark:text-gray-400">PT Allocation</p>
+                              <p className="text-lg font-bold text-gray-900 dark:text-white">{pos.ptAllocation}%</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">${(pos.purchaseAmount * pos.ptAllocation / 100).toFixed(2)}</p>
+                            </div>
+                            <div className="p-2 bg-white dark:bg-gray-800 rounded-lg">
+                              <p className="text-xs text-gray-600 dark:text-gray-400">YT Allocation</p>
+                              <p className="text-lg font-bold text-gray-900 dark:text-white">{pos.ytAllocation}%</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">${(pos.purchaseAmount * pos.ytAllocation / 100).toFixed(2)}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Expected APY:</span>
+                            <span className="font-bold text-green-600 dark:text-green-400">{pos.expectedAPY.toFixed(2)}%</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                )}
+
+                {/* Recommendations Section */}
+                <div className="space-y-4">
+                  <h4 className="text-md font-bold text-gray-900 dark:text-white">
+                    Recommendations
+                  </h4>
+                  {result.recommendations?.map((rec: any, index: number) => {
+                    const recId = `rec-${index}-${rec.asset?.symbol}`;
+                    const isPurchased = purchasedPositions.some(p => p.id === recId);
+                    const adjustment = ratioAdjustments[recId] || rec.strategy?.allocation || { pt: 50, yt: 50 };
+                    const ptPercent = adjustment.pt;
+                    const ytPercent = adjustment.yt;
+
+                    return (
+                      <div
+                        key={index}
+                        className={`p-5 rounded-xl border-2 transition-all ${
+                          isPurchased
+                            ? 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-300 dark:border-green-700'
+                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg'
+                        }`}
+                      >
+                        {/* Header */}
+                        <div className="flex items-start justify-between mb-4">
+                          <div>
+                            <h5 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                              {rec.asset?.symbol}
+                            </h5>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              Balance: {rec.asset?.balance?.toFixed(4) || 0} • Value: ${rec.asset?.valueUSD?.toFixed(2) || 0}
+                            </p>
+                          </div>
+                          {isPurchased && (
+                            <span className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
+                              Purchased
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Strategy Info */}
+                        <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">
+                              Recommended Strategy: {rec.strategy?.recommended}
+                            </p>
+                            <p className="text-sm font-bold text-blue-900 dark:text-blue-200">
+                              APY: {rec.strategy?.expectedAPY?.toFixed(2)}%
+                            </p>
+                          </div>
+                          <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
+                            {rec.strategy?.reasoning}
+                          </p>
+
+                          {/* Ratio Slider */}
+                          {!isPurchased && (
+                            <div className="mt-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Adjust PT/YT Ratio
+                                </label>
+                                <span className="text-sm font-bold text-gray-900 dark:text-white">
+                                  PT {ptPercent}% / YT {ytPercent}%
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="5"
+                                value={ptPercent}
+                                onChange={(e) => {
+                                  const newPt = parseInt(e.target.value);
+                                  setRatioAdjustments(prev => ({
+                                    ...prev,
+                                    [recId]: { pt: newPt, yt: 100 - newPt }
+                                  }));
+                                }}
+                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                                style={{
+                                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${ptPercent}%, #10b981 ${ptPercent}%, #10b981 100%)`
+                                }}
+                              />
+                              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                <span>100% PT</span>
+                                <span>50/50</span>
+                                <span>100% YT</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Pool Details */}
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          {rec.pools?.bestPT && (
+                            <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Best PT Pool</p>
+                              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{rec.pools.bestPT.name}</p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">
+                                APY: {rec.pools.bestPT.apy?.toFixed(2)}% • Discount: {(rec.pools.bestPT.ptDiscount * 100).toFixed(2)}%
+                              </p>
+                            </div>
+                          )}
+                          {rec.pools?.bestYT && (
+                            <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Best YT Pool</p>
+                              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{rec.pools.bestYT.name}</p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">
+                                APY: {rec.pools.bestYT.apy?.toFixed(2)}% • Maturity: {rec.pools.bestYT.daysToMaturity}d
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Action Button */}
+                        {!isPurchased ? (
+                          <button
+                            onClick={() => {
+                              const pool = rec.pools?.bestPT || rec.pools?.bestYT;
+                              const newPosition: PurchasedPosition = {
+                                id: recId,
+                                assetSymbol: rec.asset?.symbol || 'UNKNOWN',
+                                poolAddress: pool?.address || '',
+                                poolName: pool?.name || 'Unknown Pool',
+                                strategy: rec.strategy?.recommended || 'SPLIT',
+                                ptAllocation: ptPercent,
+                                ytAllocation: ytPercent,
+                                purchaseAmount: 100,
+                                purchaseDate: Date.now(),
+                                expectedAPY: rec.strategy?.expectedAPY || 0,
+                                currentValue: 100,
+                              };
+                              setPurchasedPositions(prev => [...prev, newPosition]);
+                            }}
+                            className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg"
+                          >
+                            💰 Purchase $100 (Test Mode)
+                          </button>
+                        ) : (
+                          <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-center">
+                            <p className="text-sm text-green-800 dark:text-green-200">
+                              ✅ Position purchased! Use the "Sell" button above to close.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -340,7 +685,7 @@ export default function PendleTestPage() {
           <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
             <li><strong>Pools:</strong> Tests fetching all Pendle pools from API</li>
             <li><strong>Positions:</strong> Requires a wallet address with Pendle positions on Base</li>
-            <li><strong>Recommendations:</strong> Can use wallet address or sample assets</li>
+            <li><strong>Recommendations:</strong> Tests with sample assets (sKAITO and USDC) to show matching pools and strategy suggestions</li>
             <li>Check browser console and server logs for detailed information</li>
           </ul>
         </div>

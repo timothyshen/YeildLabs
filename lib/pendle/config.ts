@@ -25,6 +25,11 @@ export const PENDLE_ENDPOINTS = {
   ASSETS_ALL: '/v1/assets/all',
   // Market-specific data endpoint
   MARKETS_DATA: '/v2/{chainId}/markets/{address}/data',
+  // ✅ Confirmed working: Returns user positions from database
+  // Format: /core/v1/dashboard/positions/database/{address}
+  // Query params: filterUsd (optional, default 0.1 to filter small positions)
+  // Response: [{ chainId, totalOpen, totalClosed, openPositions, closedPositions, syPositions, updatedAt }]
+  POSITIONS_DATABASE: '/core/v1/dashboard/positions/database/{address}',
 } as const;
 
 // Cache configuration

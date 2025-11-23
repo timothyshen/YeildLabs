@@ -52,8 +52,16 @@ export async function fetchFromPendleAPI<T = any>(
       },
     });
 
+    console.log(`📥 Response status: ${response.status} ${response.statusText}`);
+
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`❌ Pendle API error:`, {
+        status: response.status,
+        statusText: response.statusText,
+        url: url.toString(),
+        error: errorText,
+      });
       throw new Error(
         `Pendle API error (${response.status}): ${errorText || response.statusText}`
       );
@@ -131,6 +139,61 @@ export async function fetchMarketDetails(marketAddress: string, chainId: number 
   } catch (error) {
     console.warn(`⚠️ Could not fetch details for market ${marketAddress}:`, error);
     return null;
+  }
+}
+
+/**
+ * Fetch user positions from Pendle database
+ * Uses /core/v1/dashboard/positions/database/{address}
+ * Response: [{ chainId, totalOpen, totalClosed, openPositions, closedPositions, syPositions, updatedAt }]
+ */
+export async function fetchUserPositions(
+  userAddress: string,
+  options?: { filterUsd?: number }
+) {
+  const cacheKey = `positions-${userAddress}-${options?.filterUsd || '0.1'}`;
+  const endpoint = PENDLE_ENDPOINTS.POSITIONS_DATABASE.replace('{address}', userAddress);
+  
+  // Add filterUsd query parameter (default 0.1 to filter small positions)
+  const params: Record<string, string | number> = {};
+  if (options?.filterUsd !== undefined) {
+    params.filterUsd = options.filterUsd;
+  } else {
+    params.filterUsd = 0.1; // Default filter
+  }
+  
+  try {
+    console.log(`📡 Fetching positions for ${userAddress} with filterUsd=${params.filterUsd}`);
+    const data = await fetchFromPendleAPI<any>(endpoint, {
+      cacheKey,
+      cacheDuration: CACHE_DURATION.POSITIONS,
+      params,
+    });
+    
+    // API returns { positions: [...] } or directly [...]
+    let result: any[] = [];
+    if (data) {
+      if (Array.isArray(data)) {
+        result = data;
+      } else if (data.positions && Array.isArray(data.positions)) {
+        result = data.positions;
+      } else if (typeof data === 'object' && 'chainId' in data) {
+        // Single chain object, wrap in array
+        result = [data];
+      }
+    }
+    
+    console.log(`✅ Fetched positions data: ${result.length} chains`);
+    if (result.length > 0) {
+      console.log(`   Chain IDs: ${result.map((r: any) => r.chainId).join(', ')}`);
+      result.forEach((chain: any) => {
+        console.log(`   Chain ${chain.chainId}: ${chain.totalOpen || 0} open, ${chain.totalClosed || 0} closed`);
+      });
+    }
+    return result;
+  } catch (error) {
+    console.error(`❌ Could not fetch positions for ${userAddress}:`, error);
+    throw error; // Re-throw to let caller handle
   }
 }
 

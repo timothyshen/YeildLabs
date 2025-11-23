@@ -18,8 +18,9 @@ export function findMatchingPools(
   const matches = new Map<string, PendlePool[]>();
 
   userAssets.forEach((asset) => {
-    const assetSymbol = asset.symbol?.toUpperCase() || '';
-    const assetAddress = asset.token?.toLowerCase() || '';
+    // Handle both legacy WalletAsset (string token) and unified WalletAsset (Token object)
+    const assetSymbol = (asset.token?.symbol || (asset as any).symbol || '').toUpperCase();
+    const assetAddress = (asset.token?.address || (asset as any).token || '').toLowerCase();
 
     if (!assetSymbol && !assetAddress) {
       return; // Skip invalid assets
@@ -28,17 +29,35 @@ export function findMatchingPools(
     const matchingPools: PendlePool[] = [];
 
     allPools.forEach((pool) => {
-      const poolAsset = pool.underlyingAsset?.toUpperCase() || '';
+      // Handle both legacy (string) and unified (Token object) underlyingAsset
+      const poolAssetSymbol = (typeof pool.underlyingAsset === 'string' 
+        ? pool.underlyingAsset 
+        : pool.underlyingAsset?.symbol || '').toUpperCase();
+      const poolAssetAddress = (typeof pool.underlyingAsset === 'string'
+        ? ''
+        : pool.underlyingAsset?.address || '').toLowerCase();
 
       // Match by symbol (case-insensitive)
-      if (assetSymbol && poolAsset && assetSymbol === poolAsset) {
+      if (assetSymbol && poolAssetSymbol && assetSymbol === poolAssetSymbol) {
         matchingPools.push(pool);
         return;
       }
 
       // Match by address if available
-      // Note: We'd need to enhance PendlePool to include underlyingAssetAddress
-      // For now, we'll rely on symbol matching
+      if (assetAddress && poolAssetAddress && assetAddress === poolAssetAddress) {
+        matchingPools.push(pool);
+        return;
+      }
+
+      // Fuzzy match: check if asset symbol is contained in pool name/symbol
+      // e.g., "USDC" matches "PT-USDC-..." or "sUSDe" matches "PT-sUSDe-..."
+      if (assetSymbol && poolAssetSymbol && (
+        poolAssetSymbol.includes(assetSymbol) || 
+        assetSymbol.includes(poolAssetSymbol)
+      )) {
+        matchingPools.push(pool);
+        return;
+      }
     });
 
     if (matchingPools.length > 0) {
@@ -77,7 +96,12 @@ export function getUniqueUnderlyingAssets(pools: PendlePool[]): string[] {
   const assets = new Set<string>();
   pools.forEach((pool) => {
     if (pool.underlyingAsset) {
-      assets.add(pool.underlyingAsset.toUpperCase());
+      const symbol = typeof pool.underlyingAsset === 'string'
+        ? pool.underlyingAsset
+        : pool.underlyingAsset.symbol || '';
+      if (symbol) {
+        assets.add(symbol.toUpperCase());
+      }
     }
   });
   return Array.from(assets);
