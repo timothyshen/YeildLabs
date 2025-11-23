@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       ? positions.reduce((sum, pos) => sum + (pos.currentAPY * pos.currentValue), 0) / totalPositionsValue
       : 0;
 
-    return NextResponse.json<ApiResponse<{
+    const response = NextResponse.json<ApiResponse<{
       positions: PendlePosition[];
       summary: {
         totalPositions: number;
@@ -63,6 +63,12 @@ export async function GET(request: NextRequest) {
         },
       },
     });
+
+    // Cache for 1 minute (positions change with user transactions)
+    // Use private cache since this is user-specific data
+    response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
+
+    return response;
   } catch (error) {
     console.error('❌ Error fetching Pendle positions:', error);
     return NextResponse.json<ApiResponse<null>>({

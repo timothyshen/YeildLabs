@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { ApiResponse } from '@/types';
 import { mintSyFromToken, mintPyFromSy, mintPyFromToken } from '@/lib/pendle/mint';
 import { BASE_CHAIN_ID } from '@/lib/pendle/config';
+import { normalizeAddress, isValidAddress } from '@/lib/utils/address';
 
 /**
  * Pendle Mint API
@@ -43,20 +44,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Normalize addresses (remove chainId prefix if present)
-    const normalizeAddress = (addr: string): string => {
-      if (!addr) return '';
-      if (addr.includes('-')) {
-        return addr.split('-').pop() || addr;
-      }
-      return addr;
-    };
-    
     const normalizedTokenIn = normalizeAddress(tokenIn);
     const normalizedReceiver = normalizeAddress(receiver);
-    
+
     // Validate addresses
-    const addressRegex = /^0x[a-fA-F0-9]{40}$/;
-    if (!normalizedTokenIn || !addressRegex.test(normalizedTokenIn)) {
+    if (!isValidAddress(normalizedTokenIn)) {
       console.error('❌ Invalid tokenIn address:', { original: tokenIn, normalized: normalizedTokenIn });
       return NextResponse.json<ApiResponse<null>>({
         success: false,
@@ -64,7 +56,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    if (!normalizedReceiver || !addressRegex.test(normalizedReceiver)) {
+    if (!isValidAddress(normalizedReceiver)) {
       console.error('❌ Invalid receiver address:', { original: receiver, normalized: normalizedReceiver });
       return NextResponse.json<ApiResponse<null>>({
         success: false,
@@ -85,7 +77,7 @@ export async function POST(request: NextRequest) {
     if (type === 'sy') {
       // Mint SY
       const normalizedSyToken = normalizeAddress(syToken || '');
-      if (!normalizedSyToken || !addressRegex.test(normalizedSyToken)) {
+      if (!isValidAddress(normalizedSyToken)) {
         console.error('❌ Invalid syToken address:', { original: syToken, normalized: normalizedSyToken });
         return NextResponse.json<ApiResponse<null>>({
           success: false,
@@ -115,7 +107,7 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
-      if (!addressRegex.test(normalizedPtToken) || !addressRegex.test(normalizedYtToken)) {
+      if (!isValidAddress(normalizedPtToken) || !isValidAddress(normalizedYtToken)) {
         console.error('❌ Invalid PT or YT token address:', {
           ptToken: { original: ptToken, normalized: normalizedPtToken },
           ytToken: { original: ytToken, normalized: normalizedYtToken },

@@ -45,10 +45,15 @@ export async function GET(request: NextRequest) {
         ? transformedPools.filter(pool => isSupportedStablecoin(pool.underlyingAsset))
         : transformedPools;
 
-      return NextResponse.json<ApiResponse<PendlePool[]>>({
+      const response = NextResponse.json<ApiResponse<PendlePool[]>>({
         success: true,
         data: filteredPools,
       });
+
+      // Cache for 5 minutes (pool data doesn't change frequently)
+      response.headers.set('Cache-Control', 'public, max-age=300, s-maxage=300, stale-while-revalidate=600');
+
+      return response;
     }
 
     // No API data available - return error

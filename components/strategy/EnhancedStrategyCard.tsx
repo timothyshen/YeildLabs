@@ -17,6 +17,7 @@ import { use1inchSwap } from '@/lib/hooks/use1inchSwap';
 import { SwapPreviewModal } from '@/components/swap/SwapPreviewModal';
 import { BASE_TOKENS } from '@/lib/1inch/config';
 import type { PendlePool } from '@/types';
+import { normalizeAddress, isValidAddress } from '@/lib/utils/address';
 
 // Safe logging helper to avoid cross-origin errors
 const safeLog = (message: string, data: any) => {
@@ -840,13 +841,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       // Get underlying token address - use provided address or lookup from constants
       let underlyingToken = providedTokenAddress;
       
-      // Helper to check if a string is an address or a symbol
-      const isAddress = (str: string): boolean => {
-        if (!str) return false;
-        return /^0x[a-fA-F0-9]{40}$/.test(str) || (str.includes('-') && !!str.split('-').pop()?.match(/^0x[a-fA-F0-9]{40}$/));
-      };
-      
-      if (!underlyingToken || !isAddress(underlyingToken)) {
+      if (!underlyingToken || !isValidAddress(underlyingToken)) {
         // Try to get from pool - check underlyingAssetAddress first (legacy format)
         const poolUnderlyingAsset = (pool as any).underlyingAssetAddress ||
           (typeof pool.underlyingAsset === 'string'

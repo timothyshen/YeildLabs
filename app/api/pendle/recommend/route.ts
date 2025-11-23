@@ -108,10 +108,15 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
-    return NextResponse.json<ApiResponse<typeof recommendations>>({
+    const response = NextResponse.json<ApiResponse<typeof recommendations>>({
       success: true,
       data: recommendations,
     });
+
+    // Cache for 3 minutes (recommendations can change based on market conditions)
+    response.headers.set('Cache-Control', 'public, max-age=180, s-maxage=180, stale-while-revalidate=360');
+
+    return response;
   } catch (error) {
     console.error('❌ Error generating recommendations:', error);
     return NextResponse.json<ApiResponse<null>>({

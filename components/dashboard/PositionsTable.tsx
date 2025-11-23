@@ -1,21 +1,22 @@
 'use client';
 
+import React, { useCallback } from 'react';
 import type { UserPosition } from '@/types';
 
 interface PositionsTableProps {
   positions: UserPosition[];
 }
 
-export function PositionsTable({ positions }: PositionsTableProps) {
-  const formatValue = (value: number) => {
+export const PositionsTable = React.memo(function PositionsTable({ positions }: PositionsTableProps) {
+  const formatValue = useCallback((value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
     }).format(value);
-  };
+  }, []);
 
-  const formatPnL = (pnl: number) => {
+  const formatPnL = useCallback((pnl: number) => {
     const color = pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
     const sign = pnl >= 0 ? '+' : '';
     return (
@@ -23,7 +24,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
         {sign}{formatValue(pnl)}
       </span>
     );
-  };
+  }, [formatValue]);
 
   if (positions.length === 0) {
     return (
@@ -140,4 +141,4 @@ export function PositionsTable({ positions }: PositionsTableProps) {
       </div>
     </div>
   );
-}
+});
