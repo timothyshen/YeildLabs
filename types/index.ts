@@ -32,6 +32,11 @@ export interface PendlePool {
   ptDiscount: number;
   daysToMaturity: number;
   strategyTag: 'Best PT' | 'Best YT' | 'Risky' | 'Neutral';
+  // Optional token addresses for reference
+  ptAddress?: string;
+  ytAddress?: string;
+  syAddress?: string;
+  underlyingAssetAddress?: string;
 }
 
 /**

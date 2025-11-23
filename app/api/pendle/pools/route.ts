@@ -97,11 +97,6 @@ export function transformMarketsToPools(
       const now = Date.now() / 1000;
       const daysToMaturity = maturity > now ? Math.ceil((maturity - now) / 86400) : 0;
 
-      // Extract underlying asset address (remove chainId prefix if present)
-      const underlyingAssetAddress = market.underlyingAsset 
-        ? market.underlyingAsset.split('-').pop() || market.underlyingAsset
-        : 'UNKNOWN';
-
       // Try to get detailed data from poolsData if available
       const poolData = poolsData?.find((p: any) => 
         p.market === market.address || p.address === market.address
@@ -153,11 +148,30 @@ export function transformMarketsToPools(
       // Calculate strategy tag
       const strategyTag = calculateStrategyTag(apy, impliedYield, ptDiscount, daysToMaturity);
 
+      // Extract token addresses from market data (format: "chainId-address")
+      const extractTokenAddress = (tokenStr: string | undefined): string => {
+        if (!tokenStr) return '';
+        if (tokenStr.includes('-')) {
+          return tokenStr.split('-').pop() || '';
+        }
+        return tokenStr;
+      };
+
+      const ptAddress = extractTokenAddress(market.pt);
+      const ytAddress = extractTokenAddress(market.yt);
+      const syAddress = extractTokenAddress(market.sy);
+      const underlyingAssetAddress = extractTokenAddress(market.underlyingAsset);
+
       return {
         address: market.address,
         name: market.name || `PT-${underlyingAsset}`,
         symbol: market.name || `PT-${underlyingAsset}`,
         underlyingAsset: underlyingAsset,
+        // Include token addresses for reference (will be converted to Token objects in unified format)
+        ptAddress, // Store PT address
+        ytAddress, // Store YT address
+        syAddress, // Store SY address
+        underlyingAssetAddress, // Store underlying asset address
         maturity,
         tvl,
         apy: apy * 100, // Convert to percentage

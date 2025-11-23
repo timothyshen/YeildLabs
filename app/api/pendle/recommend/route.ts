@@ -76,6 +76,31 @@ export async function POST(request: NextRequest) {
       riskLevel
     );
 
+    // Attach raw market data to recommendations for PT/YT address extraction
+    // Create a map of pool address -> market data
+    const marketMap = new Map<string, any>();
+    markets.forEach((market) => {
+      if (market.address) {
+        marketMap.set(market.address.toLowerCase(), market);
+      }
+    });
+
+    // Attach market data to each pool in recommendations
+    recommendations.recommendations.forEach((rec: any) => {
+      if (rec.pools?.bestPT?.address) {
+        const market = marketMap.get(rec.pools.bestPT.address.toLowerCase());
+        if (market) {
+          rec.pools.bestPT._market = market; // Attach raw market data
+        }
+      }
+      if (rec.pools?.bestYT?.address) {
+        const market = marketMap.get(rec.pools.bestYT.address.toLowerCase());
+        if (market) {
+          rec.pools.bestYT._market = market; // Attach raw market data
+        }
+      }
+    });
+
     if (recommendations.recommendations.length === 0) {
       return NextResponse.json<ApiResponse<null>>({
         success: false,

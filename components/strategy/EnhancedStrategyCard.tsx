@@ -9,7 +9,9 @@ import { parseEther, formatEther } from 'viem';
 import { usePendleMint } from '@/lib/hooks/usePendleMint';
 import { useAccount } from 'wagmi';
 import { useTokenBalance } from '@/lib/hooks/useTokenBalance';
+import { useTokenAddress } from '@/lib/hooks/useTokenAddress';
 import { useToast } from '@/components/ui/Toast';
+import { TokenAddressIndicator } from '@/components/ui/TokenAddressIndicator';
 import type { PendlePool } from '@/types';
 
 interface EnhancedStrategyCardProps {
@@ -23,6 +25,7 @@ interface EnhancedStrategyCardProps {
   apy7d: number;
   apy30d: number;
   pool: PendlePool;
+  tokenAddress?: string; // Optional: token address from position/recommendation data
   onDetails?: () => void;
 }
 
@@ -37,6 +40,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   apy7d,
   apy30d,
   pool,
+  tokenAddress: providedTokenAddress,
   onDetails,
 }) => {
   const { address } = useAccount();
@@ -50,16 +54,86 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   const [profitTake, setProfitTake] = useState<number>(15);
   const [lossCut, setLossCut] = useState<number>(-5);
 
-  // Get underlying token address
-  const underlyingTokenAddress = typeof pool.underlyingAsset === 'string'
+  // Get token symbol from pool
+  const tokenSymbol = typeof pool.underlyingAsset === 'string'
     ? pool.underlyingAsset
-    : pool.underlyingAsset.address;
+    : pool.underlyingAsset?.symbol;
+
+  // Helper to check if a string is an address or a symbol
+  const isAddress = (str: string | undefined): boolean => {
+    if (!str) return false;
+    // Check if it's a valid address format (0x followed by 40 hex chars)
+    if (/^0x[a-fA-F0-9]{40}$/.test(str)) return true;
+    // Check if it's in "chainId-address" format
+    if (str.includes('-')) {
+      const addr = str.split('-').pop();
+      return addr ? /^0x[a-fA-F0-9]{40}$/.test(addr) : false;
+    }
+    return false;
+  };
+
+  // Priority order for token address:
+  // 1. Provided token address (from position/recommendation data)
+  // 2. Token address from constants (fetched by symbol)
+  // 3. Pool's underlying asset address (if it's actually an address)
+  const poolTokenAddress = typeof pool.underlyingAsset === 'string'
+    ? pool.underlyingAsset
+    : pool.underlyingAsset?.address;
+
+  // Check if poolTokenAddress is actually an address or just a symbol
+  const poolTokenAddressIsValid = poolTokenAddress && isAddress(poolTokenAddress);
+
+  // Only fetch from constants if no provided address and pool address is not valid
+  const shouldFetchFromConstants = !providedTokenAddress && !poolTokenAddressIsValid && !!tokenSymbol;
+  const { address: tokenAddressFromConstants, isLoading: isLoadingTokenAddress } = useTokenAddress({
+    symbol: tokenSymbol,
+    chainId: pool.chainId || 8453,
+    enabled: shouldFetchFromConstants,
+  });
+
+  // Use provided address first, then constants lookup, then pool address (only if valid)
+  // But also check if poolTokenAddress is actually a symbol that needs lookup
+  const underlyingTokenAddress = providedTokenAddress || tokenAddressFromConstants || (poolTokenAddressIsValid ? poolTokenAddress : undefined);
+  
+  // Debug logging
+  React.useEffect(() => {
+    if (tokenSymbol) {
+      console.log('🔍 [DEBUG] Token address resolution:', {
+        tokenSymbol,
+        providedTokenAddress,
+        tokenAddressFromConstants,
+        poolTokenAddress,
+        poolTokenAddressIsValid,
+        finalAddress: underlyingTokenAddress,
+        isValid: underlyingTokenAddress && isAddress(underlyingTokenAddress),
+      });
+    }
+  }, [tokenSymbol, providedTokenAddress, tokenAddressFromConstants, poolTokenAddress, poolTokenAddressIsValid, underlyingTokenAddress]);
+
+  // Validate token address format
+  const isValidTokenAddress = underlyingTokenAddress && 
+    underlyingTokenAddress !== '0x' && 
+    underlyingTokenAddress !== '0x0000000000000000000000000000000000000000' &&
+    underlyingTokenAddress.length === 42 &&
+    underlyingTokenAddress.startsWith('0x');
+
+  // Debug logging
+  React.useEffect(() => {
+    console.log('🔍 Balance check debug:', {
+      address,
+      tokenSymbol,
+      poolTokenAddress,
+      underlyingTokenAddress,
+      isValidTokenAddress,
+      isLoadingTokenAddress,
+    });
+  }, [address, tokenSymbol, poolTokenAddress, underlyingTokenAddress, isValidTokenAddress, isLoadingTokenAddress]);
 
   // Check user's balance for the underlying token
   const userBalance = useTokenBalance({
-    tokenAddress: underlyingTokenAddress,
+    tokenAddress: isValidTokenAddress ? underlyingTokenAddress : undefined,
     userAddress: address,
-    enabled: !!address && !!underlyingTokenAddress,
+    enabled: !!address && !!isValidTokenAddress && !isLoadingTokenAddress,
   });
 
   // Sync ratios when mode changes
@@ -141,18 +215,129 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     }
 
     try {
-      // Get underlying token address
-      const underlyingToken = typeof pool.underlyingAsset === 'string'
-        ? pool.underlyingAsset
-        : pool.underlyingAsset.address;
+      // Get underlying token address - use provided address or lookup from constants
+      let underlyingToken = providedTokenAddress;
+      
+      // Helper to check if a string is an address or a symbol
+      const isAddress = (str: string): boolean => {
+        if (!str) return false;
+        return /^0x[a-fA-F0-9]{40}$/.test(str) || (str.includes('-') && str.split('-').pop()?.match(/^0x[a-fA-F0-9]{40}$/));
+      };
+      
+      if (!underlyingToken || !isAddress(underlyingToken)) {
+        // Try to get from pool
+        const poolUnderlyingAsset = typeof pool.underlyingAsset === 'string'
+          ? pool.underlyingAsset
+          : pool.underlyingAsset?.address;
+        
+        console.log('🔍 [DEBUG] Getting underlying token address:', {
+          providedTokenAddress,
+          poolUnderlyingAsset,
+          tokenSymbol,
+          isProvidedAddress: providedTokenAddress && isAddress(providedTokenAddress),
+          isPoolAddress: poolUnderlyingAsset && isAddress(poolUnderlyingAsset),
+        });
+        
+        if (poolUnderlyingAsset && isAddress(poolUnderlyingAsset)) {
+          underlyingToken = poolUnderlyingAsset;
+        } else {
+          // If we got a symbol instead of an address, look it up
+          const symbolToLookup = poolUnderlyingAsset || tokenSymbol;
+          if (symbolToLookup) {
+            const { getTokenAddressBySymbol } = await import('@/lib/utils/tokenAddress');
+            const lookedUpAddress = getTokenAddressBySymbol(symbolToLookup, pool.chainId || 8453);
+            
+            console.log('🔍 [DEBUG] Looked up token address by symbol:', {
+              symbol: symbolToLookup,
+              foundAddress: lookedUpAddress,
+              chainId: pool.chainId || 8453,
+              symbolLength: symbolToLookup.length,
+            });
+            
+            if (lookedUpAddress) {
+              underlyingToken = lookedUpAddress;
+            } else {
+              // Lookup failed - try using the hook result if available
+              if (tokenAddressFromConstants && isAddress(tokenAddressFromConstants)) {
+                underlyingToken = tokenAddressFromConstants;
+                console.log('🔍 [DEBUG] Using token address from hook:', underlyingToken);
+              }
+            }
+          }
+        }
+      }
+      
+      // Normalize address - remove any chainId prefix
+      if (underlyingToken && underlyingToken.includes('-')) {
+        underlyingToken = underlyingToken.split('-').pop() || underlyingToken;
+      }
+      
+      // Validate underlying token address
+      const addressRegex = /^0x[a-fA-F0-9]{40}$/;
+      if (!underlyingToken || !addressRegex.test(underlyingToken)) {
+        console.error('❌ [ERROR] Invalid underlying token address:', {
+          underlyingToken,
+          tokenSymbol,
+          providedTokenAddress,
+          poolUnderlyingAsset: typeof pool.underlyingAsset === 'string' ? pool.underlyingAsset : pool.underlyingAsset?.address,
+          tokenAddressFromConstants,
+          isSymbol: underlyingToken && !isAddress(underlyingToken),
+        });
+        showToast({
+          type: 'error',
+          title: 'Invalid Token Address',
+          message: `Could not find token address for "${tokenSymbol || underlyingToken || 'unknown'}". Please check the token configuration.`,
+        });
+        return;
+      }
+      
+      console.log('✅ [DEBUG] Using underlying token address:', underlyingToken);
 
-      const ptToken = typeof pool.ptToken === 'string'
+      // Get PT and YT token addresses
+      let ptToken = typeof pool.ptToken === 'string'
         ? pool.ptToken
-        : pool.ptToken.address;
-
-      const ytToken = typeof pool.ytToken === 'string'
+        : pool.ptToken?.address;
+      
+      let ytToken = typeof pool.ytToken === 'string'
         ? pool.ytToken
-        : pool.ytToken.address;
+        : pool.ytToken?.address;
+      
+      // Normalize PT/YT addresses
+      if (ptToken && ptToken.includes('-')) {
+        ptToken = ptToken.split('-').pop() || ptToken;
+      }
+      if (ytToken && ytToken.includes('-')) {
+        ytToken = ytToken.split('-').pop() || ytToken;
+      }
+      
+      // Validate PT and YT addresses
+      if (!ptToken || !addressRegex.test(ptToken)) {
+        console.error('❌ [ERROR] Invalid PT token address:', ptToken);
+        showToast({
+          type: 'error',
+          title: 'Invalid PT Token Address',
+          message: `Invalid PT token address: ${ptToken || 'not found'}`,
+        });
+        return;
+      }
+      
+      if (!ytToken || !addressRegex.test(ytToken)) {
+        console.error('❌ [ERROR] Invalid YT token address:', ytToken);
+        showToast({
+          type: 'error',
+          title: 'Invalid YT Token Address',
+          message: `Invalid YT token address: ${ytToken || 'not found'}`,
+        });
+        return;
+      }
+      
+      console.log('🔍 [DEBUG] Executing mint with addresses:', {
+        underlyingToken,
+        ptToken,
+        ytToken,
+        receiver: address,
+        amountIn: parseEther(investmentAmount).toString(),
+      });
 
       // Show loading toast
       showToast({
@@ -371,20 +556,36 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         </div>
 
         {/* Balance Display */}
-        {address && underlyingTokenAddress && (
-          <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-            <div className="flex justify-between items-center text-sm">
+        <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+          <div className="flex justify-between items-center text-sm">
+            <div className="flex items-center gap-2">
               <span className="text-gray-600 dark:text-gray-400">Your Balance:</span>
-              <span className="font-semibold text-gray-900 dark:text-white">
-                {userBalance.isLoading ? (
-                  <span className="text-gray-400">Loading...</span>
-                ) : (
-                  `${userBalance.formatted.toFixed(4)} ${typeof pool.underlyingAsset === 'string' ? pool.underlyingAsset : pool.underlyingAsset.symbol}`
-                )}
-              </span>
+              {isLoadingTokenAddress ? (
+                <span className="text-xs text-gray-400">Loading token address...</span>
+              ) : underlyingTokenAddress ? (
+                <TokenAddressIndicator
+                  address={underlyingTokenAddress}
+                  symbol={tokenSymbol}
+                />
+              ) : null}
             </div>
+            <span className="font-semibold text-gray-900 dark:text-white">
+              {!address ? (
+                <span className="text-gray-400 text-xs">Connect wallet</span>
+              ) : isLoadingTokenAddress ? (
+                <span className="text-gray-400 text-xs">Fetching token address...</span>
+              ) : !isValidTokenAddress ? (
+                <span className="text-gray-400 text-xs">
+                  {underlyingTokenAddress ? 'Invalid token address' : 'Token address not available'}
+                </span>
+              ) : userBalance.isLoading ? (
+                <span className="text-gray-400">Loading balance...</span>
+              ) : (
+                `${userBalance.formatted.toFixed(4)} ${tokenSymbol || 'TOKEN'}`
+              )}
+            </span>
           </div>
-        )}
+        </div>
 
         {/* Calculated Amounts Preview */}
         {investmentAmount && parseFloat(investmentAmount) > 0 && (

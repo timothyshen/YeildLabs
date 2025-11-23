@@ -226,6 +226,69 @@ export async function fetchPools(
 }
 
 /**
+ * Fetch all assets for a specific chain
+ * Uses /core/v1/assets/all?chainId={chainId}
+ */
+export async function fetchAssetsByChain(chainId: number = 8453) {
+  const cacheKey = `assets-${chainId}`;
+  const endpoint = PENDLE_ENDPOINTS.ASSETS_BY_CHAIN;
+  
+  try {
+    const response = await fetchFromPendleAPI<any[]>(endpoint, {
+      cacheKey,
+      cacheDuration: CACHE_DURATION.MARKETS,
+      params: { chainId },
+    });
+    
+    // API might return array directly or wrapped in an object
+    const assets = Array.isArray(response) ? response : (response?.assets || response?.data || []);
+    
+    console.log(`✅ Fetched ${assets.length} assets for chain ${chainId}`);
+    return assets;
+  } catch (error) {
+    console.error(`❌ Could not fetch assets for chain ${chainId}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Get token address by symbol from Pendle API
+ * Fetches assets for the chain and finds matching token by symbol
+ */
+export async function getTokenAddressBySymbol(
+  symbol: string,
+  chainId: number = 8453
+): Promise<string | null> {
+  if (!symbol) return null;
+  
+  const assets = await fetchAssetsByChain(chainId);
+  
+  // Normalize symbol for comparison (case-insensitive)
+  const normalizedSymbol = symbol.toUpperCase().trim();
+  
+  // Find matching asset by symbol
+  const asset = assets.find((a: any) => {
+    const assetSymbol = (a.symbol || a.name || '').toUpperCase().trim();
+    return assetSymbol === normalizedSymbol || 
+           assetSymbol.includes(normalizedSymbol) ||
+           normalizedSymbol.includes(assetSymbol);
+  });
+  
+  if (asset?.address) {
+    // Extract address if it's in "chainId-address" format
+    const address = asset.address.includes('-') 
+      ? asset.address.split('-').pop() || asset.address
+      : asset.address;
+    
+    console.log(`✅ Found token address for ${symbol}: ${address}`);
+    return address;
+  }
+  
+  console.warn(`⚠️ Could not find token address for symbol: ${symbol}`);
+  return null;
+}
+
+/**
  * Fetch token information
  * Note: Token info might be available from /v1/assets/all
  */

@@ -23,6 +23,8 @@ export const PENDLE_ENDPOINTS = {
   MARKETS_ALL: '/v1/markets/all',
   // ✅ Confirmed working: Returns all assets/tokens
   ASSETS_ALL: '/v1/assets/all',
+  // ✅ Returns all assets for a specific chain
+  ASSETS_BY_CHAIN: '/core/v1/assets/all',
   // Market-specific data endpoint
   MARKETS_DATA: '/v2/{chainId}/markets/{address}/data',
   // ✅ Confirmed working: Returns user positions from database

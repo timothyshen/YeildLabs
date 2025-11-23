@@ -7,7 +7,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { EnhancedStrategyCard } from '@/components/strategy/EnhancedStrategyCard';
 import { NetworkBadge } from '@/components/ui/NetworkBadge';
-import type { PendlePool } from '@/types';
+import type { PendlePool } from '@/types/unified';
 import { fetchMarkets } from '@/lib/pendle/apiClient';
 
 interface PurchasedPosition {
@@ -99,51 +99,247 @@ export default function PendleTestPage() {
       let userAssets: any[] = [];
       let usingRealAssets = false;
 
-      // Try to fetch real assets from Octav if wallet is connected
+      // Try to fetch real assets from Octav wallet endpoint if wallet is connected
       if (walletAddress) {
         try {
-          const octavResponse = await fetch(`/api/octav?address=${walletAddress}&includeImages=false&waitForSync=false`);
-          const octavData = await octavResponse.json();
+          // Use our API route which handles API key server-side
+          const octavUrl = `/api/octav/wallet?addresses=${walletAddress}`;
+          
+          console.log('🔍 [DEBUG] Fetching from Octav wallet API via our API route:', {
+            url: octavUrl,
+            walletAddress,
+          });
+          
+          const octavResponse = await fetch(octavUrl);
 
-          if (octavData.success && octavData.data?.assets && octavData.data.assets.length > 0) {
-            // Transform Octav assets to unified WalletAsset format
-            userAssets = octavData.data.assets.map((asset: any) => {
-              // Handle both legacy and unified formats
-              if (asset.token && typeof asset.token === 'object') {
-                // Already in unified format
-                return {
-                  token: asset.token,
-                  balance: asset.balance?.toString() || '0',
-                  balanceFormatted: asset.balanceFormatted || parseFloat(asset.balance || '0') || 0,
-                  valueUSD: asset.valueUSD || 0,
-                  lastUpdated: asset.lastUpdated || Date.now(),
-                };
-              } else {
-                // Legacy format - transform to unified
-                return {
-                  token: {
-                    address: asset.token || asset.address || '',
-                    symbol: asset.symbol || '',
-                    name: asset.name || asset.symbol || '',
-                    decimals: asset.decimals || 18,
-                    chainId: asset.chainId || 8453,
-                    priceUSD: asset.priceUSD || asset.valueUSD || 0,
-                  },
-                  balance: asset.balance?.toString() || '0',
-                  balanceFormatted: asset.balance || asset.balanceFormatted || 0,
-                  valueUSD: asset.valueUSD || 0,
-                  lastUpdated: Date.now(),
-                };
-              }
-            }).filter((asset: any) => (asset.valueUSD || 0) > 0); // Filter out zero-value assets
+          console.log('🔍 [DEBUG] Octav API response:', {
+            status: octavResponse.status,
+            statusText: octavResponse.statusText,
+            ok: octavResponse.ok,
+          });
 
-            if (userAssets.length > 0) {
-              usingRealAssets = true;
-              console.log(`✅ Using ${userAssets.length} real assets from wallet`);
+          if (octavResponse.ok) {
+            const octavResponseData = await octavResponse.json();
+            
+            if (!octavResponseData.success) {
+              console.warn('⚠️ [WARNING] Octav API returned unsuccessful response:', octavResponseData.error);
+              throw new Error(octavResponseData.error || 'Octav API returned unsuccessful response');
             }
+            
+            const octavData = octavResponseData.data;
+            
+            console.log('🔍 [DEBUG] Octav API raw response:', {
+              isArray: Array.isArray(octavData),
+              keys: Array.isArray(octavData) ? 'array' : Object.keys(octavData || {}),
+              firstItem: Array.isArray(octavData) ? octavData[0] : octavData,
+            });
+            
+            // Octav wallet API returns array of wallet objects
+            const walletData = Array.isArray(octavData) ? octavData[0] : octavData;
+            
+            console.log('🔍 [DEBUG] Wallet data structure:', {
+              hasWalletData: !!walletData,
+              chains: walletData?.chains ? Object.keys(walletData.chains) : [],
+              hasAssetByProtocols: !!walletData?.assetByProtocols,
+              assetByProtocolsKeys: walletData?.assetByProtocols ? Object.keys(walletData.assetByProtocols) : [],
+            });
+            
+            if (walletData) {
+              // Extract assets from Base chain (chainId 8453)
+              // Look for sKAITO token specifically
+              const baseChainData = walletData.chains?.base || walletData.chains?.['8453'];
+              
+              console.log('🔍 [DEBUG] Base chain data:', {
+                found: !!baseChainData,
+                chainKey: walletData.chains?.base ? 'base' : (walletData.chains?.['8453'] ? '8453' : 'none'),
+                hasProtocolPositions: !!baseChainData?.protocolPositions,
+                protocolPositionsKeys: baseChainData?.protocolPositions ? Object.keys(baseChainData.protocolPositions) : [],
+              });
+              
+              if (baseChainData) {
+                // Extract assets from Base chain
+                const baseAssets: any[] = [];
+                
+                // Check protocolPositions.WALLET for Base chain assets
+                if (baseChainData.protocolPositions?.WALLET) {
+                  const walletProtocol = baseChainData.protocolPositions.WALLET;
+                  
+                  console.log('🔍 [DEBUG] WALLET protocol in Base chain:', {
+                    hasAssets: !!walletProtocol.assets,
+                    assetsCount: walletProtocol.assets?.length || 0,
+                    assets: walletProtocol.assets?.slice(0, 5), // First 5 for debugging
+                  });
+                  
+                  if (walletProtocol.assets && Array.isArray(walletProtocol.assets)) {
+                    walletProtocol.assets.forEach((asset: any) => {
+                      console.log(`🔍 [DEBUG] Asset "${asset.symbol}":`, {
+                        symbol: asset.symbol,
+                        address: asset.address || asset.contractAddress || asset.token,
+                        balance: asset.balance,
+                        value: asset.value || asset.valueUSD,
+                      });
+                      
+                      baseAssets.push(asset);
+                    });
+                  }
+                }
+                
+                // Also check assetByProtocols for Base chain assets (fallback)
+                if (walletData.assetByProtocols) {
+                  console.log('🔍 [DEBUG] Checking assetByProtocols (fallback):', {
+                    protocolCount: Object.keys(walletData.assetByProtocols).length,
+                    protocols: Object.keys(walletData.assetByProtocols),
+                  });
+                  
+                  Object.entries(walletData.assetByProtocols).forEach(([protocolKey, protocol]: [string, any]) => {
+                    console.log(`🔍 [DEBUG] Protocol "${protocolKey}":`, {
+                      hasAssets: !!protocol.assets,
+                      assetsCount: protocol.assets?.length || 0,
+                      assets: protocol.assets?.slice(0, 3), // First 3 for debugging
+                    });
+                    
+                    if (protocol.assets && Array.isArray(protocol.assets)) {
+                      protocol.assets.forEach((asset: any) => {
+                        // Filter for Base chain (chainId 8453 or chain === 'base')
+                        const chainId = asset.chainId || (asset.chain === 'base' ? 8453 : null);
+                        const isBaseChain = chainId === 8453 || asset.chain === 'base';
+                        
+                        console.log(`🔍 [DEBUG] Asset "${asset.symbol}":`, {
+                          symbol: asset.symbol,
+                          chain: asset.chain,
+                          chainId: asset.chainId,
+                          isBaseChain,
+                          address: asset.address || asset.contractAddress || asset.token,
+                        });
+                        
+                        if (isBaseChain) {
+                          // Avoid duplicates
+                          const existingAsset = baseAssets.find(a => 
+                            (a.address || a.contractAddress || a.token) === (asset.address || asset.contractAddress || asset.token)
+                          );
+                          if (!existingAsset) {
+                            baseAssets.push(asset);
+                          }
+                        }
+                      });
+                    }
+                  });
+                }
+                
+                // Also check direct chains.base.assets if available (fallback)
+                if (baseChainData.assets && Array.isArray(baseChainData.assets)) {
+                  console.log('🔍 [DEBUG] Direct Base chain assets (fallback):', {
+                    count: baseChainData.assets.length,
+                    assets: baseChainData.assets.slice(0, 5), // First 5 for debugging
+                  });
+                  
+                  baseChainData.assets.forEach((asset: any) => {
+                    const existingAsset = baseAssets.find(a => 
+                      (a.address || a.contractAddress || a.token) === (asset.address || asset.contractAddress || asset.token)
+                    );
+                    if (!existingAsset) {
+                      baseAssets.push(asset);
+                    }
+                  });
+                }
+                
+                console.log('🔍 [DEBUG] All Base chain assets found:', {
+                  totalCount: baseAssets.length,
+                  symbols: baseAssets.map(a => a.symbol),
+                  assets: baseAssets,
+                });
+                
+                // Transform to unified WalletAsset format and filter for sKAITO
+                const sKAITOAssets = baseAssets.filter((asset: any) => {
+                  const symbol = (asset.symbol || '').toUpperCase();
+                  const isKAITO = symbol === 'SKAITO' || symbol === 'SKAITO';
+                  
+                  console.log(`🔍 [DEBUG] Checking asset "${asset.symbol}":`, {
+                    symbol,
+                    isKAITO,
+                  });
+                  
+                  return isKAITO;
+                });
+                
+                console.log('🔍 [DEBUG] Filtered sKAITO assets:', {
+                  count: sKAITOAssets.length,
+                  assets: sKAITOAssets,
+                });
+                
+                // Import token address utility
+                const { getTokenInfoBySymbol } = await import('@/lib/utils/tokenAddress');
+                
+                userAssets = sKAITOAssets.map((asset: any) => {
+                  // Get token address from local constants
+                  const tokenInfo = getTokenInfoBySymbol(asset.symbol || 'sKAITO', 8453);
+                  
+                  // Extract address - try local constants first, then fallback to asset data
+                  let tokenAddress = tokenInfo?.address || asset.address || asset.contractAddress || asset.token || '';
+                  if (tokenAddress.includes('-')) {
+                    // Handle "chainId-address" format
+                    tokenAddress = tokenAddress.split('-').pop() || tokenAddress;
+                  }
+                  
+                  const transformed = {
+                    token: {
+                      address: tokenAddress,
+                      symbol: tokenInfo?.symbol || asset.symbol || 'sKAITO',
+                      name: tokenInfo?.name || asset.name || asset.symbol || 'sKAITO',
+                      decimals: tokenInfo?.decimals || asset.decimals || 18,
+                      chainId: 8453, // Base chain
+                      priceUSD: tokenInfo?.priceUSD || asset.priceUSD || parseFloat(asset.value || asset.valueUSD || '0') / parseFloat(asset.balance || '1') || 0,
+                    },
+                    balance: asset.balance?.toString() || '0',
+                    balanceFormatted: parseFloat(asset.balance || '0') || 0,
+                    valueUSD: parseFloat(asset.value || asset.valueUSD || '0') || 0,
+                    lastUpdated: Date.now(),
+                  };
+                  
+                  console.log(`🔍 [DEBUG] Transformed asset "${asset.symbol}":`, {
+                    ...transformed,
+                    tokenAddressSource: tokenInfo ? 'local-constants' : 'octav-data',
+                  });
+                  
+                  return transformed;
+                }).filter((asset: any) => {
+                  const hasValue = (asset.valueUSD || 0) > 0;
+                  console.log(`🔍 [DEBUG] Asset "${asset.token.symbol}" value check:`, {
+                    valueUSD: asset.valueUSD,
+                    hasValue,
+                  });
+                  return hasValue;
+                });
+
+                if (userAssets.length > 0) {
+                  usingRealAssets = true;
+                  console.log(`✅ [SUCCESS] Found ${userAssets.length} sKAITO asset(s) on Base chain from Octav wallet API`);
+                  console.log('✅ [SUCCESS] sKAITO assets:', userAssets);
+                } else {
+                  console.log('⚠️ [WARNING] No sKAITO assets found on Base chain after filtering');
+                  console.log('🔍 [DEBUG] Available Base chain assets:', baseAssets.map(a => ({
+                    symbol: a.symbol,
+                    address: a.address || a.contractAddress || a.token,
+                  })));
+                }
+              } else {
+                console.log('⚠️ [WARNING] No Base chain data found in Octav response');
+                console.log('🔍 [DEBUG] Available chains:', walletData.chains ? Object.keys(walletData.chains) : []);
+              }
+            } else {
+              console.log('⚠️ [WARNING] No wallet data found in Octav response');
+            }
+          } else {
+            const errorText = await octavResponse.text().catch(() => 'Unable to read error');
+            console.warn('⚠️ [ERROR] Octav wallet API returned non-OK status:', {
+              status: octavResponse.status,
+              statusText: octavResponse.statusText,
+              error: errorText,
+            });
           }
         } catch (octavError) {
-          console.warn('⚠️ Could not fetch assets from Octav, using sample assets:', octavError);
+          console.error('❌ [ERROR] Exception fetching from Octav wallet API:', octavError);
+          console.warn('⚠️ Could not fetch assets from Octav wallet API, using sample assets:', octavError);
         }
       }
 
@@ -464,7 +660,7 @@ export default function PendleTestPage() {
                   strategyTag: 'Neutral',
                   riskLevel: 'neutral',
                   updatedAt: Date.now(),
-                }}
+                } as any}
                 onDetails={() => {
                   alert('Details clicked! This would open a detailed view.');
                 }}
@@ -751,75 +947,250 @@ export default function PendleTestPage() {
                         </div>
 
                         {/* Enhanced Strategy Card - Replace simple button */}
-                        {!isPurchased ? (
-                          <div className="mt-4">
+                        {!isPurchased ? (() => {
+                          // Get the pool (bestPT or bestYT)
+                          const pool = rec.pools?.bestPT || rec.pools?.bestYT;
+                          const market = (pool as any)?._market; // Raw market data attached by API
+                          
+                          // Extract token addresses from market data if available
+                          const extractTokenAddress = (tokenStr: string | undefined): string => {
+                            if (!tokenStr) return '';
+                            if (tokenStr.includes('-')) {
+                              return tokenStr.split('-').pop() || '';
+                            }
+                            return tokenStr;
+                          };
+                          
+                          const ptAddressFromMarket = market?.pt ? extractTokenAddress(market.pt) : '';
+                          const ytAddressFromMarket = market?.yt ? extractTokenAddress(market.yt) : '';
+                          const syAddressFromMarket = market?.sy ? extractTokenAddress(market.sy) : '';
+                          const underlyingAssetAddressFromMarket = market?.underlyingAsset ? extractTokenAddress(market.underlyingAsset) : '';
+                          
+                          console.log('🔍 [DEBUG] Market data extraction:', {
+                            hasMarket: !!market,
+                            ptAddressFromMarket,
+                            ytAddressFromMarket,
+                            syAddressFromMarket,
+                            underlyingAssetAddressFromMarket,
+                            marketPt: market?.pt,
+                            marketYt: market?.yt,
+                          });
+                          
+                          // Extract underlying asset address - handle both string and Token object formats
+                          let underlyingAssetAddress = underlyingAssetAddressFromMarket;
+                          if (!underlyingAssetAddress && pool) {
+                            if (typeof pool.underlyingAsset === 'string') {
+                              // Legacy format: string (might be "chainId-address" or just address)
+                              underlyingAssetAddress = pool.underlyingAsset.includes('-') 
+                                ? pool.underlyingAsset.split('-').pop() || ''
+                                : pool.underlyingAsset;
+                            } else if (pool.underlyingAsset?.address) {
+                              // Unified format: Token object
+                              underlyingAssetAddress = pool.underlyingAsset.address;
+                            }
+                          }
+                          
+                          // Fallback to asset token address if pool doesn't have it
+                          if (!underlyingAssetAddress && rec.asset?.token?.address) {
+                            underlyingAssetAddress = typeof rec.asset.token === 'string'
+                              ? rec.asset.token
+                              : rec.asset.token.address;
+                          }
+
+                          // Build pool object with proper Token structure
+                          const poolData = pool ? {
+                            ...pool,
+                            underlyingAsset: typeof pool.underlyingAsset === 'string' ? {
+                              address: underlyingAssetAddress || pool.underlyingAsset,
+                              symbol: rec.asset?.symbol || pool.underlyingAsset || 'UNKNOWN',
+                              name: rec.asset?.symbol || pool.underlyingAsset || 'Unknown',
+                              decimals: 18,
+                              chainId: 8453,
+                              priceUSD: 1,
+                            } : pool.underlyingAsset,
+                            syToken: pool.syToken || (typeof pool.syToken === 'string' ? {
+                              address: pool.syToken,
+                              symbol: `SY-${rec.asset?.symbol || 'TOKEN'}`,
+                              name: `SY-${rec.asset?.symbol || 'TOKEN'}`,
+                              decimals: 18,
+                              chainId: 8453,
+                              priceUSD: 1,
+                            } : {
+                              address: '',
+                              symbol: 'SY',
+                              name: 'SY Token',
+                              decimals: 18,
+                              chainId: 8453,
+                              priceUSD: 1,
+                            }),
+                            ptToken: (() => {
+                              // Try multiple sources for PT token address (priority order)
+                              let ptAddress = ptAddressFromMarket; // 1. From market data (highest priority)
+                              
+                              // 2. Check if pool has ptToken object
+                              if (!ptAddress && pool.ptToken && typeof pool.ptToken === 'object' && pool.ptToken.address) {
+                                ptAddress = pool.ptToken.address;
+                              }
+                              // 3. Check if pool has ptToken string
+                              else if (!ptAddress && pool.ptToken && typeof pool.ptToken === 'string') {
+                                ptAddress = pool.ptToken;
+                              }
+                              // 4. Check if pool has ptAddress (from transformMarketsToPools)
+                              else if (!ptAddress && (pool as any).ptAddress) {
+                                ptAddress = (pool as any).ptAddress;
+                              }
+                              
+                              // Normalize address (remove chainId prefix)
+                              if (ptAddress && ptAddress.includes('-')) {
+                                ptAddress = ptAddress.split('-').pop() || ptAddress;
+                              }
+                              
+                              console.log('🔍 [DEBUG] PT Token address extraction:', {
+                                ptAddressFromMarket,
+                                poolPtToken: pool.ptToken,
+                                poolPtAddress: (pool as any).ptAddress,
+                                finalPtAddress: ptAddress,
+                                isValid: ptAddress && /^0x[a-fA-F0-9]{40}$/.test(ptAddress),
+                              });
+                              
+                              return ptAddress && /^0x[a-fA-F0-9]{40}$/.test(ptAddress) ? {
+                                address: ptAddress,
+                                symbol: `PT-${rec.asset?.symbol || 'TOKEN'}`,
+                                name: `PT-${rec.asset?.symbol || 'TOKEN'}`,
+                                decimals: 18,
+                                chainId: 8453,
+                                priceUSD: pool.ptPrice || 0.95,
+                              } : {
+                                address: '',
+                                symbol: 'PT',
+                                name: 'PT Token',
+                                decimals: 18,
+                                chainId: 8453,
+                                priceUSD: pool.ptPrice || 0.95,
+                              };
+                            })(),
+                            ytToken: (() => {
+                              // Try multiple sources for YT token address (priority order)
+                              let ytAddress = ytAddressFromMarket; // 1. From market data (highest priority)
+                              
+                              // 2. Check if pool has ytToken object
+                              if (!ytAddress && pool.ytToken && typeof pool.ytToken === 'object' && pool.ytToken.address) {
+                                ytAddress = pool.ytToken.address;
+                              }
+                              // 3. Check if pool has ytToken string
+                              else if (!ytAddress && pool.ytToken && typeof pool.ytToken === 'string') {
+                                ytAddress = pool.ytToken;
+                              }
+                              // 4. Check if pool has ytAddress (from transformMarketsToPools)
+                              else if (!ytAddress && (pool as any).ytAddress) {
+                                ytAddress = (pool as any).ytAddress;
+                              }
+                              
+                              // Normalize address (remove chainId prefix)
+                              if (ytAddress && ytAddress.includes('-')) {
+                                ytAddress = ytAddress.split('-').pop() || ytAddress;
+                              }
+                              
+                              console.log('🔍 [DEBUG] YT Token address extraction:', {
+                                ytAddressFromMarket,
+                                poolYtToken: pool.ytToken,
+                                poolYtAddress: (pool as any).ytAddress,
+                                finalYtAddress: ytAddress,
+                                isValid: ytAddress && /^0x[a-fA-F0-9]{40}$/.test(ytAddress),
+                              });
+                              
+                              return ytAddress && /^0x[a-fA-F0-9]{40}$/.test(ytAddress) ? {
+                                address: ytAddress,
+                                symbol: `YT-${rec.asset?.symbol || 'TOKEN'}`,
+                                name: `YT-${rec.asset?.symbol || 'TOKEN'}`,
+                                decimals: 18,
+                                chainId: 8453,
+                                priceUSD: pool.ytPrice || 0.05,
+                              } : {
+                                address: '',
+                                symbol: 'YT',
+                                name: 'YT Token',
+                                decimals: 18,
+                                chainId: 8453,
+                                priceUSD: pool.ytPrice || 0.05,
+                              };
+                            })(),
+                          } : {
+                            address: rec.pools?.bestPT?.address || rec.pools?.bestYT?.address || '',
+                            name: rec.pools?.bestPT?.name || rec.pools?.bestYT?.name || '',
+                            symbol: rec.pools?.bestPT?.symbol || rec.pools?.bestYT?.symbol || '',
+                            underlyingAsset: {
+                              address: underlyingAssetAddress || (typeof rec.asset?.token === 'string' ? rec.asset.token : rec.asset?.token?.address) || '',
+                              symbol: rec.asset?.symbol || '',
+                              name: rec.asset?.symbol || '',
+                              decimals: 18,
+                              chainId: 8453,
+                              priceUSD: 1,
+                            },
+                            syToken: {
+                              address: rec.pools?.bestPT?.syToken?.address || '',
+                              symbol: rec.pools?.bestPT?.syToken?.symbol || '',
+                              name: rec.pools?.bestPT?.syToken?.name || '',
+                              decimals: 18,
+                              chainId: 8453,
+                              priceUSD: 1,
+                            },
+                            ptToken: {
+                              address: rec.pools?.bestPT?.ptToken?.address || '',
+                              symbol: rec.pools?.bestPT?.ptToken?.symbol || '',
+                              name: rec.pools?.bestPT?.ptToken?.name || '',
+                              decimals: 18,
+                              chainId: 8453,
+                              priceUSD: rec.pools?.bestPT?.ptPrice || 0.95,
+                            },
+                            ytToken: {
+                              address: rec.pools?.bestPT?.ytToken?.address || '',
+                              symbol: rec.pools?.bestPT?.ytToken?.symbol || '',
+                              name: rec.pools?.bestPT?.ytToken?.name || '',
+                              decimals: 18,
+                              chainId: 8453,
+                              priceUSD: rec.pools?.bestPT?.ytPrice || 0.05,
+                            },
+                            maturity: Math.floor(Date.now() / 1000) + ((rec.pools?.bestPT?.daysToMaturity || 120) * 24 * 60 * 60),
+                            maturityDate: new Date(Date.now() + ((rec.pools?.bestPT?.daysToMaturity || 120) * 24 * 60 * 60 * 1000)).toISOString(),
+                            daysToMaturity: rec.pools?.bestPT?.daysToMaturity || 120,
+                            isExpired: false,
+                            tvl: rec.pools?.bestPT?.tvl || 0,
+                            apy: rec.pools?.bestPT?.apy || rec.pools?.bestYT?.apy || 0,
+                            impliedYield: rec.pools?.bestPT?.impliedYield || 0,
+                            ptPrice: rec.pools?.bestPT?.ptPrice || 0.95,
+                            ytPrice: rec.pools?.bestPT?.ytPrice || 0.05,
+                            ptDiscount: rec.pools?.bestPT?.ptDiscount || 0.05,
+                            syPrice: 1,
+                            strategyTag: 'Neutral',
+                            riskLevel: 'neutral',
+                            updatedAt: Date.now(),
+                          };
+
+                          // Extract token address from recommendation asset data
+                          const tokenAddressFromRec = typeof rec.asset?.token === 'string'
+                            ? rec.asset.token
+                            : rec.asset?.token?.address;
+
+                          return (
                             <EnhancedStrategyCard
-                              poolName={rec.pools?.bestPT?.name || rec.pools?.bestYT?.name || 'Unknown Pool'}
-                              maturity={`${rec.pools?.bestPT?.daysToMaturity || rec.pools?.bestYT?.daysToMaturity || 0} days`}
+                              poolName={poolData.name || 'Unknown Pool'}
+                              maturity={`${poolData.daysToMaturity || 0} days`}
                               ptPercentage={ptPercent / 100}
                               ytPercentage={ytPercent / 100}
                               score={85}
                               riskFactor={0.75}
                               comment={rec.strategy?.reasoning || 'Balanced PT/YT positioning'}
-                              apy7d={(rec.pools?.bestPT?.apy || rec.pools?.bestYT?.apy || 0) / 100}
-                              apy30d={(rec.pools?.bestPT?.apy || rec.pools?.bestYT?.apy || 0) / 100}
-                              pool={rec.pools?.bestPT || rec.pools?.bestYT || {
-                                address: rec.pools?.bestPT?.address || rec.pools?.bestYT?.address || '',
-                                name: rec.pools?.bestPT?.name || rec.pools?.bestYT?.name || '',
-                                symbol: rec.pools?.bestPT?.symbol || rec.pools?.bestYT?.symbol || '',
-                                underlyingAsset: {
-                                  address: rec.asset?.token?.address || '',
-                                  symbol: rec.asset?.symbol || '',
-                                  name: rec.asset?.symbol || '',
-                                  decimals: 18,
-                                  chainId: 8453,
-                                  priceUSD: 1,
-                                },
-                                syToken: {
-                                  address: rec.pools?.bestPT?.syToken?.address || '',
-                                  symbol: rec.pools?.bestPT?.syToken?.symbol || '',
-                                  name: rec.pools?.bestPT?.syToken?.name || '',
-                                  decimals: 18,
-                                  chainId: 8453,
-                                  priceUSD: 1,
-                                },
-                                ptToken: {
-                                  address: rec.pools?.bestPT?.ptToken?.address || '',
-                                  symbol: rec.pools?.bestPT?.ptToken?.symbol || '',
-                                  name: rec.pools?.bestPT?.ptToken?.name || '',
-                                  decimals: 18,
-                                  chainId: 8453,
-                                  priceUSD: rec.pools?.bestPT?.ptPrice || 0.95,
-                                },
-                                ytToken: {
-                                  address: rec.pools?.bestPT?.ytToken?.address || '',
-                                  symbol: rec.pools?.bestPT?.ytToken?.symbol || '',
-                                  name: rec.pools?.bestPT?.ytToken?.name || '',
-                                  decimals: 18,
-                                  chainId: 8453,
-                                  priceUSD: rec.pools?.bestPT?.ytPrice || 0.05,
-                                },
-                                maturity: Math.floor(Date.now() / 1000) + ((rec.pools?.bestPT?.daysToMaturity || 120) * 24 * 60 * 60),
-                                maturityDate: new Date(Date.now() + ((rec.pools?.bestPT?.daysToMaturity || 120) * 24 * 60 * 60 * 1000)).toISOString(),
-                                daysToMaturity: rec.pools?.bestPT?.daysToMaturity || 120,
-                                isExpired: false,
-                                tvl: rec.pools?.bestPT?.tvl || 0,
-                                apy: rec.pools?.bestPT?.apy || rec.pools?.bestYT?.apy || 0,
-                                impliedYield: rec.pools?.bestPT?.impliedYield || 0,
-                                ptPrice: rec.pools?.bestPT?.ptPrice || 0.95,
-                                ytPrice: rec.pools?.bestPT?.ytPrice || 0.05,
-                                ptDiscount: rec.pools?.bestPT?.ptDiscount || 0.05,
-                                syPrice: 1,
-                                strategyTag: 'Neutral',
-                                riskLevel: 'neutral',
-                                updatedAt: Date.now(),
-                              }}
+                              apy7d={(poolData.apy || 0) / 100}
+                              apy30d={(poolData.apy || 0) / 100}
+                              pool={poolData}
+                              tokenAddress={tokenAddressFromRec}
                               onDetails={() => {
-                                alert(`Pool Details: ${rec.pools?.bestPT?.name || rec.pools?.bestYT?.name}`);
+                                alert(`Pool Details: ${poolData.name}`);
                               }}
                             />
-                          </div>
-                        ) : (
+                          );
+                        })() : (
                           <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-center">
                             <p className="text-sm text-green-800 dark:text-green-200">
                               ✅ Position purchased! Use the "Sell" button above to close.
