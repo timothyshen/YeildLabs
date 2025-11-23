@@ -7,8 +7,10 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { EnhancedStrategyCard } from '@/components/strategy/EnhancedStrategyCard';
 import { NetworkBadge } from '@/components/ui/NetworkBadge';
+import { Accordion, AccordionItem } from '@/components/ui/accordion';
 import type { PendlePool } from '@/types/unified';
 import { fetchMarkets } from '@/lib/pendle/apiClient';
+import tokenAddresses from '@/lib/constants/token_address.json';
 
 interface PurchasedPosition {
   id: string;
@@ -23,6 +25,11 @@ interface PurchasedPosition {
   expectedAPY: number;
   currentValue: number;
 }
+
+// USD Stablecoin symbols - filter from token_address.json (exclude sKAITO)
+const USD_STABLECOINS = tokenAddresses
+  .filter((token) => token.symbol !== 'sKAITO')
+  .map((token) => token.symbol);
 
 export default function PendleTestPage() {
   const { address: connectedAddress, isConnected } = useAccount();
@@ -248,44 +255,29 @@ export default function PendleTestPage() {
                   symbols: baseAssets.map(a => a.symbol),
                   assets: baseAssets,
                 });
-                
-                // Transform to unified WalletAsset format and filter for sKAITO
-                const sKAITOAssets = baseAssets.filter((asset: any) => {
-                  const symbol = (asset.symbol || '').toUpperCase();
-                  const isKAITO = symbol === 'SKAITO' || symbol === 'SKAITO';
-                  
-                  console.log(`🔍 [DEBUG] Checking asset "${asset.symbol}":`, {
-                    symbol,
-                    isKAITO,
-                  });
-                  
-                  return isKAITO;
-                });
-                
-                console.log('🔍 [DEBUG] Filtered sKAITO assets:', {
-                  count: sKAITOAssets.length,
-                  assets: sKAITOAssets,
-                });
-                
+
+                // Transform ALL base chain assets to unified WalletAsset format
+                // This allows matching to all available Pendle markets
                 // Import token address utility
                 const { getTokenInfoBySymbol } = await import('@/lib/utils/tokenAddress');
-                
-                userAssets = sKAITOAssets.map((asset: any) => {
-                  // Get token address from local constants
-                  const tokenInfo = getTokenInfoBySymbol(asset.symbol || 'sKAITO', 8453);
-                  
+
+                userAssets = baseAssets.map((asset: any) => {
+                  // Get token address from local constants if available
+                  const assetSymbol = asset.symbol || 'UNKNOWN';
+                  const tokenInfo = getTokenInfoBySymbol(assetSymbol, 8453);
+
                   // Extract address - try local constants first, then fallback to asset data
                   let tokenAddress = tokenInfo?.address || asset.address || asset.contractAddress || asset.token || '';
                   if (tokenAddress.includes('-')) {
                     // Handle "chainId-address" format
                     tokenAddress = tokenAddress.split('-').pop() || tokenAddress;
                   }
-                  
+
                   const transformed = {
                     token: {
                       address: tokenAddress,
-                      symbol: tokenInfo?.symbol || asset.symbol || 'sKAITO',
-                      name: tokenInfo?.name || asset.name || asset.symbol || 'sKAITO',
+                      symbol: tokenInfo?.symbol || assetSymbol,
+                      name: tokenInfo?.name || asset.name || assetSymbol,
                       decimals: tokenInfo?.decimals || asset.decimals || 18,
                       chainId: 8453, // Base chain
                       priceUSD: tokenInfo?.priceUSD || asset.priceUSD || parseFloat(asset.value || asset.valueUSD || '0') / parseFloat(asset.balance || '1') || 0,
@@ -295,12 +287,12 @@ export default function PendleTestPage() {
                     valueUSD: parseFloat(asset.value || asset.valueUSD || '0') || 0,
                     lastUpdated: Date.now(),
                   };
-                  
-                  console.log(`🔍 [DEBUG] Transformed asset "${asset.symbol}":`, {
+
+                  console.log(`🔍 [DEBUG] Transformed asset "${assetSymbol}":`, {
                     ...transformed,
                     tokenAddressSource: tokenInfo ? 'local-constants' : 'octav-data',
                   });
-                  
+
                   return transformed;
                 }).filter((asset: any) => {
                   const hasValue = (asset.valueUSD || 0) > 0;
@@ -313,10 +305,13 @@ export default function PendleTestPage() {
 
                 if (userAssets.length > 0) {
                   usingRealAssets = true;
-                  console.log(`✅ [SUCCESS] Found ${userAssets.length} sKAITO asset(s) on Base chain from Octav wallet API`);
-                  console.log('✅ [SUCCESS] sKAITO assets:', userAssets);
+                  console.log(`✅ [SUCCESS] Found ${userAssets.length} asset(s) on Base chain from Octav wallet API`);
+                  console.log('✅ [SUCCESS] Assets:', userAssets.map(a => ({
+                    symbol: a.token.symbol,
+                    valueUSD: a.valueUSD,
+                  })));
                 } else {
-                  console.log('⚠️ [WARNING] No sKAITO assets found on Base chain after filtering');
+                  console.log('⚠️ [WARNING] No assets with value found on Base chain after filtering');
                   console.log('🔍 [DEBUG] Available Base chain assets:', baseAssets.map(a => ({
                     symbol: a.symbol,
                     address: a.address || a.contractAddress || a.token,
@@ -344,42 +339,81 @@ export default function PendleTestPage() {
       }
 
       // Fall back to sample assets if no real assets found
+      // Use token addresses from token_address.json
       if (userAssets.length === 0) {
+        const skaito = tokenAddresses.find(t => t.symbol === 'sKAITO');
+        const usde = tokenAddresses.find(t => t.symbol === 'USDe');
+
         userAssets = [
-          {
+          skaito && {
             token: {
-              address: '0x548d3b444da39686d1a6f1544781d154e7cd1ef7',
-              symbol: 'sKAITO',
-              name: 'sKAITO',
-              decimals: 18,
-              chainId: 8453,
-              priceUSD: 1,
+              address: skaito.address,
+              symbol: skaito.symbol,
+              name: skaito.name,
+              decimals: skaito.decimals,
+              chainId: skaito.chainId,
+              priceUSD: skaito.priceUSD,
             },
             balance: '1000000000000000000',
             balanceFormatted: 1,
             valueUSD: 1000,
             lastUpdated: Date.now(),
           },
-          {
+          usde && {
             token: {
-              address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-              symbol: 'USDC',
-              name: 'USD Coin',
-              decimals: 6,
-              chainId: 8453,
-              priceUSD: 1,
+              address: usde.address,
+              symbol: usde.symbol,
+              name: usde.name,
+              decimals: usde.decimals,
+              chainId: usde.chainId,
+              priceUSD: usde.priceUSD,
             },
-            balance: '1000000000',
-            balanceFormatted: 1000,
-            valueUSD: 1000,
+            balance: '500000000000000000000',
+            balanceFormatted: 500,
+            valueUSD: 500,
             lastUpdated: Date.now(),
           },
-        ];
-        console.log('📝 Using sample assets for testing');
+        ].filter(Boolean) as any[];
+        console.log('📝 Using sample assets from token_address.json:', userAssets.map(a => a.token.symbol));
       }
 
+      // Add all USD stablecoins to get recommendations for suggested assets
+      const userAssetSymbols = userAssets.map(a => a.token.symbol);
+      const missingStablecoins = USD_STABLECOINS.filter(symbol => !userAssetSymbols.includes(symbol));
+
+      // Add missing stablecoins with minimal value to get recommendations
+      const suggestedAssets = missingStablecoins.map(symbol => {
+        const tokenInfo = tokenAddresses.find(t => t.symbol === symbol);
+        if (tokenInfo) {
+          return {
+            token: {
+              address: tokenInfo.address,
+              symbol: tokenInfo.symbol,
+              name: tokenInfo.name,
+              decimals: tokenInfo.decimals,
+              chainId: tokenInfo.chainId,
+              priceUSD: tokenInfo.priceUSD || 1,
+            },
+            balance: '1000000000000000000', // 1 token
+            balanceFormatted: 1,
+            valueUSD: 1,
+            lastUpdated: Date.now(),
+          };
+        }
+        return null;
+      }).filter(Boolean);
+
+      // Combine user assets with suggested assets for comprehensive recommendations
+      const allAssetsForRecommendation = [...userAssets, ...suggestedAssets];
+
+      console.log('💡 Getting recommendations for:', {
+        userAssets: userAssets.map(a => a.token.symbol),
+        suggestedAssets: suggestedAssets.map((a: any) => a.token.symbol),
+        total: allAssetsForRecommendation.length,
+      });
+
       const body = {
-        assets: userAssets,
+        assets: allAssetsForRecommendation,
         riskLevel: 'neutral',
         chainId: 8453,
       };
@@ -393,13 +427,32 @@ export default function PendleTestPage() {
       const data = await response.json();
 
       if (data.success) {
+        const allRecommendations = data.data.recommendations || [];
+        const userAssetSymbols = userAssets.map(a => a.token.symbol);
+
+        // "Your Assets to Buy In" - Show ALL assets the user holds (including non-USD stablecoins)
+        const userAssetRecs = allRecommendations.filter((rec: any) =>
+          userAssetSymbols.includes(rec.asset?.symbol)
+        );
+
+        // "Suggested Assets to Buy In" - Only show USD stablecoins the user doesn't hold
+        const suggestedAssetRecs = allRecommendations.filter((rec: any) =>
+          USD_STABLECOINS.includes(rec.asset?.symbol) && !userAssetSymbols.includes(rec.asset?.symbol)
+        );
+
         // Add metadata about asset source
         setResult({
           ...data.data,
+          recommendations: allRecommendations,
+          userAssetRecommendations: userAssetRecs,
+          suggestedAssetRecommendations: suggestedAssetRecs,
           _metadata: {
             usingRealAssets,
             assetCount: userAssets.length,
             walletAddress: walletAddress || 'none',
+            totalRecommendations: allRecommendations.length,
+            userAssetsCount: userAssetRecs.length,
+            suggestedAssetsCount: suggestedAssetRecs.length,
           },
         });
       } else {
@@ -834,400 +887,256 @@ export default function PendleTestPage() {
                   </div>
                 )}
 
-                {/* Recommendations Section */}
+                {/* Recommendations Section with Accordions */}
                 <div className="space-y-4">
-                  <h4 className="text-md font-bold text-gray-900 dark:text-white">
-                    Recommendations
+                  <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                    USD Stablecoin Markets
                   </h4>
-                  {result.recommendations?.map((rec: any, index: number) => {
-                    const recId = `rec-${index}-${rec.asset?.symbol}`;
-                    const isPurchased = purchasedPositions.some(p => p.id === recId);
-                    const adjustment = ratioAdjustments[recId] || rec.strategy?.allocation || { pt: 50, yt: 50 };
-                    const ptPercent = adjustment.pt;
-                    const ytPercent = adjustment.yt;
 
-                    return (
-                      <div
-                        key={index}
-                        className={`p-5 rounded-xl border-2 transition-all ${
-                          isPurchased
-                            ? 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-300 dark:border-green-700'
-                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg'
-                        }`}
+                  <Accordion>
+                    {/* Your Assets to Buy In */}
+                    {result.userAssetRecommendations && result.userAssetRecommendations.length > 0 && (
+                      <AccordionItem
+                        title="Your Assets to Buy In"
+                        badge={result.userAssetRecommendations.length}
+                        defaultOpen={true}
                       >
-                        {/* Header */}
-                        <div className="flex items-start justify-between mb-4">
-                          <div>
-                            <h5 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                              {rec.asset?.symbol}
-                            </h5>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              Balance: {rec.asset?.balance?.toFixed(4) || 0} • Value: ${rec.asset?.valueUSD?.toFixed(2) || 0}
-                            </p>
-                          </div>
-                          {isPurchased && (
-                            <span className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
-                              Purchased
-                            </span>
-                          )}
-                        </div>
+                        <div className="space-y-4">
+                          {result.userAssetRecommendations.map((rec: any, index: number) => {
+                            const recId = `user-rec-${index}-${rec.asset?.symbol}`;
+                            const isPurchased = purchasedPositions.some(p => p.id === recId);
+                            const adjustment = ratioAdjustments[recId] || rec.strategy?.allocation || { pt: 50, yt: 50 };
+                            const ptPercent = adjustment.pt;
+                            const ytPercent = adjustment.yt;
 
-                        {/* Strategy Info */}
-                        <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">
-                              Recommended Strategy: {rec.strategy?.recommended}
-                            </p>
-                            <p className="text-sm font-bold text-blue-900 dark:text-blue-200">
-                              APY: {rec.strategy?.expectedAPY?.toFixed(2)}%
-                            </p>
-                          </div>
-                          <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
-                            {rec.strategy?.reasoning}
-                          </p>
-
-                          {/* Ratio Slider */}
-                          {!isPurchased && (
-                            <div className="mt-4">
-                              <div className="flex items-center justify-between mb-2">
-                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                  Adjust PT/YT Ratio
-                                </label>
-                                <span className="text-sm font-bold text-gray-900 dark:text-white">
-                                  PT {ptPercent}% / YT {ytPercent}%
-                                </span>
-                              </div>
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="5"
-                                value={ptPercent}
-                                onChange={(e) => {
-                                  const newPt = parseInt(e.target.value);
-                                  setRatioAdjustments(prev => ({
-                                    ...prev,
-                                    [recId]: { pt: newPt, yt: 100 - newPt }
-                                  }));
-                                }}
-                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                                style={{
-                                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${ptPercent}%, #10b981 ${ptPercent}%, #10b981 100%)`
-                                }}
+                            return (
+                              <RecommendationCard
+                                key={recId}
+                                rec={rec}
+                                recId={recId}
+                                isPurchased={isPurchased}
+                                ptPercent={ptPercent}
+                                ytPercent={ytPercent}
+                                ratioAdjustments={ratioAdjustments}
+                                setRatioAdjustments={setRatioAdjustments}
+                                setPurchasedPositions={setPurchasedPositions}
                               />
-                              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                <span>100% PT</span>
-                                <span>50/50</span>
-                                <span>100% YT</span>
-                              </div>
-                            </div>
-                          )}
+                            );
+                          })}
                         </div>
+                      </AccordionItem>
+                    )}
 
-                        {/* Pool Details */}
-                        <div className="grid grid-cols-2 gap-3 mb-4">
-                          {rec.pools?.bestPT && (
-                            <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Best PT Pool</p>
-                              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{rec.pools.bestPT.name}</p>
-                              <p className="text-xs text-gray-600 dark:text-gray-400">
-                                APY: {rec.pools.bestPT.apy?.toFixed(2)}% • Discount: {(rec.pools.bestPT.ptDiscount * 100).toFixed(2)}%
-                              </p>
-                            </div>
-                          )}
-                          {rec.pools?.bestYT && (
-                            <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Best YT Pool</p>
-                              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{rec.pools.bestYT.name}</p>
-                              <p className="text-xs text-gray-600 dark:text-gray-400">
-                                APY: {rec.pools.bestYT.apy?.toFixed(2)}% • Maturity: {rec.pools.bestYT.daysToMaturity}d
-                              </p>
-                            </div>
-                          )}
+                    {/* Suggested Assets to Buy In */}
+                    {result.suggestedAssetRecommendations && result.suggestedAssetRecommendations.length > 0 && (
+                      <AccordionItem
+                        title="Suggested Assets to Buy In"
+                        badge={result.suggestedAssetRecommendations.length}
+                        defaultOpen={result.userAssetRecommendations?.length === 0}
+                      >
+                        <div className="space-y-4">
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                            💡 These are USD stablecoins you don't currently hold. Consider diversifying your portfolio with these options.
+                          </p>
+                          {result.suggestedAssetRecommendations.map((rec: any, index: number) => {
+                            const recId = `suggested-rec-${index}-${rec.asset?.symbol}`;
+                            const isPurchased = purchasedPositions.some(p => p.id === recId);
+                            const adjustment = ratioAdjustments[recId] || rec.strategy?.allocation || { pt: 50, yt: 50 };
+                            const ptPercent = adjustment.pt;
+                            const ytPercent = adjustment.yt;
+
+                            return (
+                              <RecommendationCard
+                                key={recId}
+                                rec={rec}
+                                recId={recId}
+                                isPurchased={isPurchased}
+                                ptPercent={ptPercent}
+                                ytPercent={ytPercent}
+                                ratioAdjustments={ratioAdjustments}
+                                setRatioAdjustments={setRatioAdjustments}
+                                setPurchasedPositions={setPurchasedPositions}
+                              />
+                            );
+                          })}
                         </div>
-
-                        {/* Enhanced Strategy Card - Replace simple button */}
-                        {!isPurchased ? (() => {
-                          // Get the pool (bestPT or bestYT)
-                          const pool = rec.pools?.bestPT || rec.pools?.bestYT;
-                          const market = (pool as any)?._market; // Raw market data attached by API
-                          
-                          // Extract token addresses from market data if available
-                          const extractTokenAddress = (tokenStr: string | undefined): string => {
-                            if (!tokenStr) return '';
-                            if (tokenStr.includes('-')) {
-                              return tokenStr.split('-').pop() || '';
-                            }
-                            return tokenStr;
-                          };
-                          
-                          const ptAddressFromMarket = market?.pt ? extractTokenAddress(market.pt) : '';
-                          const ytAddressFromMarket = market?.yt ? extractTokenAddress(market.yt) : '';
-                          const syAddressFromMarket = market?.sy ? extractTokenAddress(market.sy) : '';
-                          const underlyingAssetAddressFromMarket = market?.underlyingAsset ? extractTokenAddress(market.underlyingAsset) : '';
-                          
-                          console.log('🔍 [DEBUG] Market data extraction:', {
-                            hasMarket: !!market,
-                            ptAddressFromMarket,
-                            ytAddressFromMarket,
-                            syAddressFromMarket,
-                            underlyingAssetAddressFromMarket,
-                            marketPt: market?.pt,
-                            marketYt: market?.yt,
-                          });
-                          
-                          // Extract underlying asset address - handle both string and Token object formats
-                          let underlyingAssetAddress = underlyingAssetAddressFromMarket;
-                          if (!underlyingAssetAddress && pool) {
-                            if (typeof pool.underlyingAsset === 'string') {
-                              // Legacy format: string (might be "chainId-address" or just address)
-                              underlyingAssetAddress = pool.underlyingAsset.includes('-') 
-                                ? pool.underlyingAsset.split('-').pop() || ''
-                                : pool.underlyingAsset;
-                            } else if (pool.underlyingAsset?.address) {
-                              // Unified format: Token object
-                              underlyingAssetAddress = pool.underlyingAsset.address;
-                            }
-                          }
-                          
-                          // Fallback to asset token address if pool doesn't have it
-                          if (!underlyingAssetAddress && rec.asset?.token?.address) {
-                            underlyingAssetAddress = typeof rec.asset.token === 'string'
-                              ? rec.asset.token
-                              : rec.asset.token.address;
-                          }
-
-                          // Build pool object with proper Token structure
-                          const poolData = pool ? {
-                            ...pool,
-                            underlyingAsset: typeof pool.underlyingAsset === 'string' ? {
-                              address: underlyingAssetAddress || pool.underlyingAsset,
-                              symbol: rec.asset?.symbol || pool.underlyingAsset || 'UNKNOWN',
-                              name: rec.asset?.symbol || pool.underlyingAsset || 'Unknown',
-                              decimals: 18,
-                              chainId: 8453,
-                              priceUSD: 1,
-                            } : pool.underlyingAsset,
-                            syToken: pool.syToken || (typeof pool.syToken === 'string' ? {
-                              address: pool.syToken,
-                              symbol: `SY-${rec.asset?.symbol || 'TOKEN'}`,
-                              name: `SY-${rec.asset?.symbol || 'TOKEN'}`,
-                              decimals: 18,
-                              chainId: 8453,
-                              priceUSD: 1,
-                            } : {
-                              address: '',
-                              symbol: 'SY',
-                              name: 'SY Token',
-                              decimals: 18,
-                              chainId: 8453,
-                              priceUSD: 1,
-                            }),
-                            ptToken: (() => {
-                              // Try multiple sources for PT token address (priority order)
-                              let ptAddress = ptAddressFromMarket; // 1. From market data (highest priority)
-                              
-                              // 2. Check if pool has ptToken object
-                              if (!ptAddress && pool.ptToken && typeof pool.ptToken === 'object' && pool.ptToken.address) {
-                                ptAddress = pool.ptToken.address;
-                              }
-                              // 3. Check if pool has ptToken string
-                              else if (!ptAddress && pool.ptToken && typeof pool.ptToken === 'string') {
-                                ptAddress = pool.ptToken;
-                              }
-                              // 4. Check if pool has ptAddress (from transformMarketsToPools)
-                              else if (!ptAddress && (pool as any).ptAddress) {
-                                ptAddress = (pool as any).ptAddress;
-                              }
-                              
-                              // Normalize address (remove chainId prefix)
-                              if (ptAddress && ptAddress.includes('-')) {
-                                ptAddress = ptAddress.split('-').pop() || ptAddress;
-                              }
-                              
-                              console.log('🔍 [DEBUG] PT Token address extraction:', {
-                                ptAddressFromMarket,
-                                poolPtToken: pool.ptToken,
-                                poolPtAddress: (pool as any).ptAddress,
-                                finalPtAddress: ptAddress,
-                                isValid: ptAddress && /^0x[a-fA-F0-9]{40}$/.test(ptAddress),
-                              });
-                              
-                              return ptAddress && /^0x[a-fA-F0-9]{40}$/.test(ptAddress) ? {
-                                address: ptAddress,
-                                symbol: `PT-${rec.asset?.symbol || 'TOKEN'}`,
-                                name: `PT-${rec.asset?.symbol || 'TOKEN'}`,
-                                decimals: 18,
-                                chainId: 8453,
-                                priceUSD: pool.ptPrice || 0.95,
-                              } : {
-                                address: '',
-                                symbol: 'PT',
-                                name: 'PT Token',
-                                decimals: 18,
-                                chainId: 8453,
-                                priceUSD: pool.ptPrice || 0.95,
-                              };
-                            })(),
-                            ytToken: (() => {
-                              // Try multiple sources for YT token address (priority order)
-                              let ytAddress = ytAddressFromMarket; // 1. From market data (highest priority)
-                              
-                              // 2. Check if pool has ytToken object
-                              if (!ytAddress && pool.ytToken && typeof pool.ytToken === 'object' && pool.ytToken.address) {
-                                ytAddress = pool.ytToken.address;
-                              }
-                              // 3. Check if pool has ytToken string
-                              else if (!ytAddress && pool.ytToken && typeof pool.ytToken === 'string') {
-                                ytAddress = pool.ytToken;
-                              }
-                              // 4. Check if pool has ytAddress (from transformMarketsToPools)
-                              else if (!ytAddress && (pool as any).ytAddress) {
-                                ytAddress = (pool as any).ytAddress;
-                              }
-                              
-                              // Normalize address (remove chainId prefix)
-                              if (ytAddress && ytAddress.includes('-')) {
-                                ytAddress = ytAddress.split('-').pop() || ytAddress;
-                              }
-                              
-                              console.log('🔍 [DEBUG] YT Token address extraction:', {
-                                ytAddressFromMarket,
-                                poolYtToken: pool.ytToken,
-                                poolYtAddress: (pool as any).ytAddress,
-                                finalYtAddress: ytAddress,
-                                isValid: ytAddress && /^0x[a-fA-F0-9]{40}$/.test(ytAddress),
-                              });
-                              
-                              return ytAddress && /^0x[a-fA-F0-9]{40}$/.test(ytAddress) ? {
-                                address: ytAddress,
-                                symbol: `YT-${rec.asset?.symbol || 'TOKEN'}`,
-                                name: `YT-${rec.asset?.symbol || 'TOKEN'}`,
-                                decimals: 18,
-                                chainId: 8453,
-                                priceUSD: pool.ytPrice || 0.05,
-                              } : {
-                                address: '',
-                                symbol: 'YT',
-                                name: 'YT Token',
-                                decimals: 18,
-                                chainId: 8453,
-                                priceUSD: pool.ytPrice || 0.05,
-                              };
-                            })(),
-                          } : {
-                            address: rec.pools?.bestPT?.address || rec.pools?.bestYT?.address || '',
-                            name: rec.pools?.bestPT?.name || rec.pools?.bestYT?.name || '',
-                            symbol: rec.pools?.bestPT?.symbol || rec.pools?.bestYT?.symbol || '',
-                            underlyingAsset: {
-                              address: underlyingAssetAddress || (typeof rec.asset?.token === 'string' ? rec.asset.token : rec.asset?.token?.address) || '',
-                              symbol: rec.asset?.symbol || '',
-                              name: rec.asset?.symbol || '',
-                              decimals: 18,
-                              chainId: 8453,
-                              priceUSD: 1,
-                            },
-                            syToken: {
-                              address: rec.pools?.bestPT?.syToken?.address || '',
-                              symbol: rec.pools?.bestPT?.syToken?.symbol || '',
-                              name: rec.pools?.bestPT?.syToken?.name || '',
-                              decimals: 18,
-                              chainId: 8453,
-                              priceUSD: 1,
-                            },
-                            ptToken: {
-                              address: rec.pools?.bestPT?.ptToken?.address || '',
-                              symbol: rec.pools?.bestPT?.ptToken?.symbol || '',
-                              name: rec.pools?.bestPT?.ptToken?.name || '',
-                              decimals: 18,
-                              chainId: 8453,
-                              priceUSD: rec.pools?.bestPT?.ptPrice || 0.95,
-                            },
-                            ytToken: {
-                              address: rec.pools?.bestPT?.ytToken?.address || '',
-                              symbol: rec.pools?.bestPT?.ytToken?.symbol || '',
-                              name: rec.pools?.bestPT?.ytToken?.name || '',
-                              decimals: 18,
-                              chainId: 8453,
-                              priceUSD: rec.pools?.bestPT?.ytPrice || 0.05,
-                            },
-                            maturity: Math.floor(Date.now() / 1000) + ((rec.pools?.bestPT?.daysToMaturity || 120) * 24 * 60 * 60),
-                            maturityDate: new Date(Date.now() + ((rec.pools?.bestPT?.daysToMaturity || 120) * 24 * 60 * 60 * 1000)).toISOString(),
-                            daysToMaturity: rec.pools?.bestPT?.daysToMaturity || 120,
-                            isExpired: false,
-                            tvl: rec.pools?.bestPT?.tvl || 0,
-                            apy: rec.pools?.bestPT?.apy || rec.pools?.bestYT?.apy || 0,
-                            impliedYield: rec.pools?.bestPT?.impliedYield || 0,
-                            ptPrice: rec.pools?.bestPT?.ptPrice || 0.95,
-                            ytPrice: rec.pools?.bestPT?.ytPrice || 0.05,
-                            ptDiscount: rec.pools?.bestPT?.ptDiscount || 0.05,
-                            syPrice: 1,
-                            strategyTag: 'Neutral',
-                            riskLevel: 'neutral',
-                            updatedAt: Date.now(),
-                          };
-
-                          // Extract token address from recommendation asset data
-                          const tokenAddressFromRec = typeof rec.asset?.token === 'string'
-                            ? rec.asset.token
-                            : rec.asset?.token?.address;
-
-                          return (
-                            <EnhancedStrategyCard
-                              poolName={poolData.name || 'Unknown Pool'}
-                              maturity={`${poolData.daysToMaturity || 0} days`}
-                              ptPercentage={ptPercent / 100}
-                              ytPercentage={ytPercent / 100}
-                              score={85}
-                              riskFactor={0.75}
-                              comment={rec.strategy?.reasoning || 'Balanced PT/YT positioning'}
-                              apy7d={(poolData.apy || 0) / 100}
-                              apy30d={(poolData.apy || 0) / 100}
-                              pool={poolData}
-                              tokenAddress={tokenAddressFromRec}
-                              onDetails={() => {
-                                alert(`Pool Details: ${poolData.name}`);
-                              }}
-                            />
-                          );
-                        })() : (
-                          <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-center">
-                            <p className="text-sm text-green-800 dark:text-green-200">
-                              ✅ Position purchased! Use the "Sell" button above to close.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                      </AccordionItem>
+                    )}
+                  </Accordion>
                 </div>
               </div>
             )}
-
-            <details className="mt-4">
-              <summary className="cursor-pointer text-sm text-gray-600 dark:text-gray-400">
-                View Raw JSON
-              </summary>
-              <pre className="mt-2 p-4 bg-gray-100 dark:bg-gray-900 rounded-lg overflow-auto text-xs">
-                {JSON.stringify(result, null, 2)}
-              </pre>
-            </details>
           </div>
         )}
-
-        <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
-          <h3 className="font-bold text-blue-900 dark:text-blue-100 mb-2">
-            💡 Testing Tips
-          </h3>
-          <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
-            <li><strong>Pools:</strong> Tests fetching all Pendle pools from API</li>
-            <li><strong>Positions:</strong> Requires a wallet address with Pendle positions on Base</li>
-            <li><strong>Recommendations:</strong> Tests with sample assets (sKAITO and USDC) to show matching pools and strategy suggestions</li>
-            <li><strong>Strategy Card:</strong> Tests the Enhanced Strategy Card component with mode toggle, ratio adjustment, and execution flow</li>
-            <li>Check browser console and server logs for detailed information</li>
-          </ul>
-        </div>
       </div>
+    </div>
+  );
+}
+
+// Recommendation Card Component
+function RecommendationCard({
+  rec,
+  recId,
+  isPurchased,
+  ptPercent,
+  ytPercent,
+  ratioAdjustments,
+  setRatioAdjustments,
+  setPurchasedPositions,
+}: {
+  rec: any;
+  recId: string;
+  isPurchased: boolean;
+  ptPercent: number;
+  ytPercent: number;
+  ratioAdjustments: Record<string, { pt: number; yt: number }>;
+  setRatioAdjustments: React.Dispatch<React.SetStateAction<Record<string, { pt: number; yt: number }>>>;
+  setPurchasedPositions: React.Dispatch<React.SetStateAction<any[]>>;
+}) {
+  return (
+    <div
+      className={`p-5 rounded-xl border-2 transition-all ${
+        isPurchased
+          ? 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-300 dark:border-green-700'
+          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg'
+      }`}
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h5 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+            {rec.asset?.symbol}
+          </h5>
+        </div>
+        {isPurchased && (
+          <span className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
+            Purchased
+          </span>
+        )}
+      </div>
+
+      {/* Strategy Info */}
+      <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">
+            Recommended Strategy: {rec.strategy?.recommended}
+          </p>
+          <p className="text-sm font-bold text-blue-900 dark:text-blue-200">
+            APY: {rec.strategy?.expectedAPY?.toFixed(2)}%
+          </p>
+        </div>
+        <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
+          {rec.strategy?.reasoning}
+        </p>
+
+        {/* Ratio Slider */}
+        {!isPurchased && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Adjust PT/YT Ratio
+              </label>
+              <span className="text-sm font-bold text-gray-900 dark:text-white">
+                PT {ptPercent}% / YT {ytPercent}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={ptPercent}
+              onChange={(e) => {
+                const newPt = parseInt(e.target.value);
+                setRatioAdjustments(prev => ({
+                  ...prev,
+                  [recId]: { pt: newPt, yt: 100 - newPt }
+                }));
+              }}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+              style={{
+                background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${ptPercent}%, #10b981 ${ptPercent}%, #10b981 100%)`
+              }}
+            />
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <span>100% PT</span>
+              <span>50/50</span>
+              <span>100% YT</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Pool Details */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        {rec.pools?.bestPT && (
+          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Best PT Pool</p>
+            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{rec.pools.bestPT.name}</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              APY: {rec.pools.bestPT.apy?.toFixed(2)}% • Discount: {(rec.pools.bestPT.ptDiscount * 100).toFixed(2)}%
+            </p>
+          </div>
+        )}
+        {rec.pools?.bestYT && (
+          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Best YT Pool</p>
+            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{rec.pools.bestYT.name}</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              APY: {rec.pools.bestYT.apy?.toFixed(2)}% • Maturity: {rec.pools.bestYT.daysToMaturity}d
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Enhanced Strategy Card */}
+      {!isPurchased ? (() => {
+        const pool = rec.pools?.bestPT || rec.pools?.bestYT;
+        if (!pool) return null;
+
+        // Helper to check if a string is an address
+        const isValidAddress = (str: string | undefined): boolean => {
+          if (!str) return false;
+          // Check if it's a valid address format (0x followed by 40 hex chars)
+          if (/^0x[a-fA-F0-9]{40}$/.test(str)) return true;
+          // Check if it's in "chainId-address" format
+          if (str.includes('-')) {
+            const addr = str.split('-').pop();
+            return addr ? /^0x[a-fA-F0-9]{40}$/.test(addr) : false;
+          }
+          return false;
+        };
+
+        // Get token address from rec data or pool - only use if it's a valid address format
+        const potentialAddress = rec._market?.underlyingAsset?.address ||
+          pool.underlyingAsset?.address ||
+          (typeof pool.underlyingAsset === 'string' ? pool.underlyingAsset : undefined);
+
+        // Only pass if it's actually an address, otherwise let the component fetch from JSON
+        const tokenAddress = isValidAddress(potentialAddress) ? potentialAddress : undefined;
+
+        return (
+          <EnhancedStrategyCard
+            poolName={pool.name || `${rec.asset?.symbol} Pool`}
+            maturity={pool.maturity ? new Date(pool.maturity * 1000).toLocaleDateString() : 'N/A'}
+            ptPercentage={ptPercent / 100}
+            ytPercentage={ytPercent / 100}
+            score={75}
+            riskFactor={0.3}
+            comment={rec.strategy?.reasoning || 'No additional details'}
+            apy7d={pool.apy || 0}
+            apy30d={pool.apy || 0}
+            pool={pool}
+            tokenAddress={tokenAddress}
+          />
+        );
+      })() : (
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+          <p className="text-sm font-semibold text-green-700 dark:text-green-300">
+            ✅ This strategy has been added to your portfolio
+          </p>
+        </div>
+      )}
     </div>
   );
 }

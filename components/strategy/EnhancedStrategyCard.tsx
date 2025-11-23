@@ -4,9 +4,10 @@ import React, { useState, useMemo } from 'react';
 import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, Settings, Zap } from 'lucide-react';
-import { parseEther, formatEther } from 'viem';
+import { ArrowRight, Zap, ArrowLeftRight } from 'lucide-react';
+import { parseEther } from 'viem';
 import { usePendleMint } from '@/lib/hooks/usePendleMint';
+import { usePendleRedeem } from '@/lib/hooks/usePendleRedeem';
 import { useAccount } from 'wagmi';
 import { useTokenBalance } from '@/lib/hooks/useTokenBalance';
 import { useTokenAddress } from '@/lib/hooks/useTokenAddress';
@@ -44,11 +45,14 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   onDetails,
 }) => {
   const { address } = useAccount();
-  const { executeMintPy, isLoading, isSuccess, hash, error } = usePendleMint();
+  const { executeMintPy, isLoading: isMintLoading, isSuccess: isMintSuccess, hash: mintHash, error: mintError } = usePendleMint();
+  const { executeRedeemPy, executeRedeemSy, isLoading: isRedeemLoading, isSuccess: isRedeemSuccess, hash: redeemHash, error: redeemError } = usePendleRedeem();
   const { showToast } = useToast();
-  
+
+  const [activeTab, setActiveTab] = useState<'invest' | 'redeem'>('invest');
   const [mode, setMode] = useState<'default' | 'advanced'>('default');
   const [investmentAmount, setInvestmentAmount] = useState<string>('');
+  const [redeemAmount, setRedeemAmount] = useState<string>('');
   const [ptRatio, setPtRatio] = useState<number>(Math.round(defaultPtPercentage * 100));
   const [ytRatio, setYtRatio] = useState<number>(Math.round(defaultYtPercentage * 100));
   const [profitTake, setProfitTake] = useState<number>(15);
@@ -92,8 +96,8 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   });
 
   // Use provided address first, then constants lookup, then pool address (only if valid)
-  // But also check if poolTokenAddress is actually a symbol that needs lookup
-  const underlyingTokenAddress = providedTokenAddress || tokenAddressFromConstants || (poolTokenAddressIsValid ? poolTokenAddress : undefined);
+  // Priority: providedTokenAddress > tokenAddressFromConstants > poolTokenAddress (if valid)
+  const underlyingTokenAddress = providedTokenAddress || tokenAddressFromConstants || (poolTokenAddressIsValid ? poolTokenAddress : null);
   
   // Debug logging
   React.useEffect(() => {
@@ -135,6 +139,42 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     userAddress: address,
     enabled: !!address && !!isValidTokenAddress && !isLoadingTokenAddress,
   });
+
+  // Get PT, YT, and SY token addresses
+  const ptTokenAddress = typeof pool.ptToken === 'string' ? pool.ptToken : pool.ptToken?.address;
+  const ytTokenAddress = typeof pool.ytToken === 'string' ? pool.ytToken : pool.ytToken?.address;
+  const syTokenAddress = typeof pool.syToken === 'string' ? pool.syToken : pool.syToken?.address;
+
+  // Normalize addresses (remove chainId prefix)
+  const normalizePtAddress = ptTokenAddress && ptTokenAddress.includes('-') ? ptTokenAddress.split('-').pop() : ptTokenAddress;
+  const normalizeYtAddress = ytTokenAddress && ytTokenAddress.includes('-') ? ytTokenAddress.split('-').pop() : ytTokenAddress;
+  const normalizeSyAddress = syTokenAddress && syTokenAddress.includes('-') ? syTokenAddress.split('-').pop() : syTokenAddress;
+
+  // Check PT balance
+  const ptBalance = useTokenBalance({
+    tokenAddress: normalizePtAddress,
+    userAddress: address,
+    enabled: !!address && !!normalizePtAddress,
+  });
+
+  // Check YT balance
+  const ytBalance = useTokenBalance({
+    tokenAddress: normalizeYtAddress,
+    userAddress: address,
+    enabled: !!address && !!normalizeYtAddress,
+  });
+
+  // Check SY balance
+  const syBalance = useTokenBalance({
+    tokenAddress: normalizeSyAddress,
+    userAddress: address,
+    enabled: !!address && !!normalizeSyAddress,
+  });
+
+  // Determine if user has redeemable tokens
+  const hasRedeemableTokens = (ptBalance.formatted > 0 && ytBalance.formatted > 0) || syBalance.formatted > 0;
+  const canRedeemPy = ptBalance.formatted > 0 && ytBalance.formatted > 0;
+  const canRedeemSy = syBalance.formatted > 0;
 
   // Sync ratios when mode changes
   React.useEffect(() => {
@@ -387,9 +427,127 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     }
   };
 
-  // Show success/error notifications
+  const handleRedeem = async () => {
+    if (!address) {
+      showToast({
+        type: 'error',
+        title: 'Wallet Not Connected',
+        message: 'Please connect your wallet to redeem tokens',
+      });
+      return;
+    }
+
+    if (!redeemAmount || parseFloat(redeemAmount) <= 0) {
+      showToast({
+        type: 'error',
+        title: 'Invalid Amount',
+        message: 'Please enter a valid redeem amount',
+      });
+      return;
+    }
+
+    try {
+      const redeemAmountFloat = parseFloat(redeemAmount);
+
+      // Determine which tokens to redeem
+      if (canRedeemPy && redeemAmountFloat <= Math.min(ptBalance.formatted, ytBalance.formatted)) {
+        // Redeem PT + YT
+        const redeemAmountWei = parseEther(redeemAmount).toString();
+
+        // Normalize PT and YT addresses
+        let ptToken = normalizePtAddress;
+        let ytToken = normalizeYtAddress;
+
+        if (!ptToken || !ytToken || !underlyingTokenAddress) {
+          showToast({
+            type: 'error',
+            title: 'Missing Token Addresses',
+            message: 'Could not find PT, YT, or underlying token addresses',
+          });
+          return;
+        }
+
+        console.log('🔄 Redeeming PT + YT:', {
+          ptToken,
+          ytToken,
+          amount: redeemAmountWei,
+          outputToken: underlyingTokenAddress,
+        });
+
+        showToast({
+          type: 'loading',
+          title: 'Redeeming PT + YT',
+          message: 'Please confirm the transaction in your wallet...',
+          duration: 0,
+        });
+
+        await executeRedeemPy({
+          chainId: pool.chainId || 8453,
+          ptToken,
+          ytToken,
+          ptAmount: redeemAmountWei,
+          ytAmount: redeemAmountWei,
+          tokenOut: underlyingTokenAddress,
+          receiver: address,
+          slippage: 0.01,
+        });
+      } else if (canRedeemSy && redeemAmountFloat <= syBalance.formatted) {
+        // Redeem SY
+        const redeemAmountWei = parseEther(redeemAmount).toString();
+
+        let syToken = normalizeSyAddress;
+
+        if (!syToken || !underlyingTokenAddress) {
+          showToast({
+            type: 'error',
+            title: 'Missing Token Addresses',
+            message: 'Could not find SY or underlying token addresses',
+          });
+          return;
+        }
+
+        console.log('🔄 Redeeming SY:', {
+          syToken,
+          amount: redeemAmountWei,
+          outputToken: underlyingTokenAddress,
+        });
+
+        showToast({
+          type: 'loading',
+          title: 'Redeeming SY',
+          message: 'Please confirm the transaction in your wallet...',
+          duration: 0,
+        });
+
+        await executeRedeemSy({
+          chainId: pool.chainId || 8453,
+          syToken,
+          syAmount: redeemAmountWei,
+          tokenOut: underlyingTokenAddress,
+          receiver: address,
+          slippage: 0.01,
+        });
+      } else {
+        showToast({
+          type: 'error',
+          title: 'Insufficient Balance',
+          message: 'You do not have enough tokens to redeem',
+        });
+      }
+    } catch (err) {
+      console.error('Redeem error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Redeem transaction failed';
+      showToast({
+        type: 'error',
+        title: 'Redeem Failed',
+        message: errorMessage,
+      });
+    }
+  };
+
+  // Show success/error notifications for mint
   React.useEffect(() => {
-    if (isSuccess && hash) {
+    if (isMintSuccess && mintHash) {
       showToast({
         type: 'success',
         title: 'Strategy Executed Successfully!',
@@ -397,22 +555,49 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         action: {
           label: 'View on BaseScan',
           onClick: () => {
-            window.open(`https://basescan.org/tx/${hash}`, '_blank');
+            window.open(`https://basescan.org/tx/${mintHash}`, '_blank');
           },
         },
       });
     }
-  }, [isSuccess, hash, showToast]);
+  }, [isMintSuccess, mintHash, showToast]);
 
   React.useEffect(() => {
-    if (error) {
+    if (mintError) {
       showToast({
         type: 'error',
         title: 'Transaction Error',
-        message: error.message || 'An error occurred during execution',
+        message: mintError.message || 'An error occurred during execution',
       });
     }
-  }, [error, showToast]);
+  }, [mintError, showToast]);
+
+  // Show success/error notifications for redeem
+  React.useEffect(() => {
+    if (isRedeemSuccess && redeemHash) {
+      showToast({
+        type: 'success',
+        title: 'Redeem Successful!',
+        message: `Transaction confirmed. Tokens redeemed to ${tokenSymbol}.`,
+        action: {
+          label: 'View on BaseScan',
+          onClick: () => {
+            window.open(`https://basescan.org/tx/${redeemHash}`, '_blank');
+          },
+        },
+      });
+    }
+  }, [isRedeemSuccess, redeemHash, tokenSymbol, showToast]);
+
+  React.useEffect(() => {
+    if (redeemError) {
+      showToast({
+        type: 'error',
+        title: 'Redeem Error',
+        message: redeemError.message || 'An error occurred during redemption',
+      });
+    }
+  }, [redeemError, showToast]);
 
   const handleRatioChange = (newPtRatio: number) => {
     if (mode === 'advanced') {
@@ -456,10 +641,49 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         </div>
       </CardHeader>
 
-      <CardContent className="mt-2">
-        <p className="text-sm text-gray-600 dark:text-gray-400">{comment}</p>
+      {/* Tab Navigation */}
+      <div className="flex border-b border-gray-200 dark:border-gray-700 px-4">
+        <button
+          onClick={() => setActiveTab('invest')}
+          className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
+            activeTab === 'invest'
+              ? 'border-b-2 border-blue-600 text-blue-600 dark:text-blue-400'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+          }`}
+        >
+          <div className="flex items-center justify-center gap-2">
+            <Zap className="w-4 h-4" />
+            <span>Invest</span>
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('redeem')}
+          className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
+            activeTab === 'redeem'
+              ? 'border-b-2 border-blue-600 text-blue-600 dark:text-blue-400'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+          }`}
+          disabled={!hasRedeemableTokens}
+        >
+          <div className="flex items-center justify-center gap-2">
+            <ArrowLeftRight className="w-4 h-4" />
+            <span>Redeem</span>
+            {hasRedeemableTokens && (
+              <span className="ml-1 px-1.5 py-0.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-xs rounded-full">
+                ✓
+              </span>
+            )}
+          </div>
+        </button>
+      </div>
 
-        {/* PT/YT Ratio Display */}
+      <CardContent className="mt-2">
+        {/* Invest Tab */}
+        {activeTab === 'invest' && (
+          <>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{comment}</p>
+
+            {/* PT/YT Ratio Display */}
         <div className="mt-4">
           <div className="flex justify-between text-sm mb-1 font-medium">
             <span className="text-gray-700 dark:text-gray-300">
@@ -618,6 +842,99 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
             )}
           </div>
         )}
+          </>
+        )}
+
+        {/* Redeem Tab */}
+        {activeTab === 'redeem' && (
+          <>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Redeem your PT/YT or SY tokens back to {tokenSymbol || 'underlying token'}
+            </p>
+
+            {/* Holdings Display */}
+            <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Your Holdings:
+              </p>
+              <div className="space-y-2 text-sm">
+                {canRedeemPy && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">PT:</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {ptBalance.formatted.toFixed(4)} PT-{tokenSymbol}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">YT:</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {ytBalance.formatted.toFixed(4)} YT-{tokenSymbol}
+                      </span>
+                    </div>
+                    <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-blue-700 dark:text-blue-300">
+                      💡 You can redeem up to {Math.min(ptBalance.formatted, ytBalance.formatted).toFixed(4)} {tokenSymbol}
+                    </div>
+                  </>
+                )}
+                {canRedeemSy && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">SY:</span>
+                    <span className="font-semibold text-gray-900 dark:text-white">
+                      {syBalance.formatted.toFixed(4)} SY-{tokenSymbol}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Redeem Amount Input */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Redeem Amount
+              </label>
+              <input
+                type="number"
+                value={redeemAmount}
+                onChange={(e) => setRedeemAmount(e.target.value)}
+                placeholder="0.00"
+                max={
+                  canRedeemPy
+                    ? Math.min(ptBalance.formatted, ytBalance.formatted)
+                    : syBalance.formatted
+                }
+                className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {canRedeemPy
+                  ? `Max: ${Math.min(ptBalance.formatted, ytBalance.formatted).toFixed(4)} (PT + YT)`
+                  : canRedeemSy
+                  ? `Max: ${syBalance.formatted.toFixed(4)} (SY)`
+                  : 'No tokens available to redeem'}
+              </p>
+            </div>
+
+            {/* Output Preview */}
+            {redeemAmount && parseFloat(redeemAmount) > 0 && (
+              <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  You will receive:
+                </p>
+                <div className="text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">{tokenSymbol}:</span>
+                    <span className="font-semibold text-gray-900 dark:text-white">
+                      ≈ {parseFloat(redeemAmount).toFixed(4)} {tokenSymbol}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  * Actual amount may vary slightly due to slippage
+                </p>
+              </div>
+            )}
+          </>
+        )}
       </CardContent>
 
       <CardFooter className="flex justify-between items-center mt-4">
@@ -629,48 +946,74 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           More <ArrowRight className="w-4 ml-1" />
         </Button>
 
-        <Button
-          className={`rounded-xl px-6 py-2 font-medium flex items-center gap-2 disabled:opacity-50 ${
-            !hasSufficientBalance && address && investmentAmount
-              ? 'bg-red-600 hover:bg-red-700 text-white'
-              : 'bg-blue-600 hover:bg-blue-700 text-white'
-          }`}
-          onClick={handleExecute}
-          disabled={
-            !address || 
-            !investmentAmount || 
-            parseFloat(investmentAmount) <= 0 || 
-            isLoading || 
-            !hasSufficientBalance ||
-            userBalance.isLoading
-          }
-        >
-          {isLoading ? (
-            <>
-              <Zap className="w-4 h-4 animate-pulse" />
-              Executing...
-            </>
-          ) : !hasSufficientBalance && address && investmentAmount ? (
-            <>
-              <Zap className="w-4 h-4" />
-              Insufficient Balance
-            </>
-          ) : (
-            <>
-              <Zap className="w-4 h-4" />
-              Execute Strategy
-            </>
-          )}
-        </Button>
+        {activeTab === 'invest' ? (
+          <Button
+            className={`rounded-xl px-6 py-2 font-medium flex items-center gap-2 disabled:opacity-50 ${
+              !hasSufficientBalance && address && investmentAmount
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+            onClick={handleExecute}
+            disabled={
+              !address ||
+              !investmentAmount ||
+              parseFloat(investmentAmount) <= 0 ||
+              isMintLoading ||
+              !hasSufficientBalance ||
+              userBalance.isLoading
+            }
+          >
+            {isMintLoading ? (
+              <>
+                <Zap className="w-4 h-4 animate-pulse" />
+                Executing...
+              </>
+            ) : !hasSufficientBalance && address && investmentAmount ? (
+              <>
+                <Zap className="w-4 h-4" />
+                Insufficient Balance
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4" />
+                Execute Strategy
+              </>
+            )}
+          </Button>
+        ) : (
+          <Button
+            className="rounded-xl px-6 py-2 font-medium flex items-center gap-2 disabled:opacity-50 bg-green-600 hover:bg-green-700 text-white"
+            onClick={handleRedeem}
+            disabled={
+              !address ||
+              !redeemAmount ||
+              parseFloat(redeemAmount) <= 0 ||
+              isRedeemLoading ||
+              (!canRedeemPy && !canRedeemSy)
+            }
+          >
+            {isRedeemLoading ? (
+              <>
+                <ArrowLeftRight className="w-4 h-4 animate-pulse" />
+                Redeeming...
+              </>
+            ) : (
+              <>
+                <ArrowLeftRight className="w-4 h-4" />
+                Redeem Tokens
+              </>
+            )}
+          </Button>
+        )}
       </CardFooter>
 
       {/* Success/Error Messages */}
-      {isSuccess && hash && (
+      {isMintSuccess && mintHash && (
         <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
           <p className="text-sm text-green-700 dark:text-green-400">
             ✅ Strategy executed!{' '}
             <a
-              href={`https://basescan.org/tx/${hash}`}
+              href={`https://basescan.org/tx/${mintHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="underline"
@@ -681,10 +1024,34 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         </div>
       )}
 
-      {error && (
+      {isRedeemSuccess && redeemHash && (
+        <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+          <p className="text-sm text-green-700 dark:text-green-400">
+            ✅ Redeem successful!{' '}
+            <a
+              href={`https://basescan.org/tx/${redeemHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              View Transaction
+            </a>
+          </p>
+        </div>
+      )}
+
+      {mintError && (
         <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
           <p className="text-sm text-red-700 dark:text-red-400">
-            ❌ Error: {error.message}
+            ❌ Error: {mintError.message}
+          </p>
+        </div>
+      )}
+
+      {redeemError && (
+        <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
+          <p className="text-sm text-red-700 dark:text-red-400">
+            ❌ Redeem Error: {redeemError.message}
           </p>
         </div>
       )}
