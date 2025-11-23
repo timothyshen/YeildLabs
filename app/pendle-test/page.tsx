@@ -5,6 +5,8 @@ import { useAccount } from 'wagmi';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { EnhancedStrategyCard } from '@/components/strategy/EnhancedStrategyCard';
+import type { PendlePool } from '@/types';
 
 interface PurchasedPosition {
   id: string;
@@ -22,7 +24,7 @@ interface PurchasedPosition {
 
 export default function PendleTestPage() {
   const { address: connectedAddress, isConnected } = useAccount();
-  const [testType, setTestType] = useState<'pools' | 'positions' | 'recommend'>('pools');
+  const [testType, setTestType] = useState<'pools' | 'positions' | 'recommend' | 'strategy'>('pools');
   const [address, setAddress] = useState('');
   const [result, setResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -223,6 +225,10 @@ export default function PendleTestPage() {
       case 'recommend':
         testRecommend();
         break;
+      case 'strategy':
+        // Strategy card test doesn't need API call
+        setResult({ type: 'strategy' });
+        break;
     }
   };
 
@@ -270,6 +276,16 @@ export default function PendleTestPage() {
               }`}
             >
               Test Recommendations
+            </button>
+            <button
+              onClick={() => setTestType('strategy')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                testType === 'strategy'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              Test Strategy Card
             </button>
           </div>
 
@@ -348,13 +364,23 @@ export default function PendleTestPage() {
             </div>
           )}
 
-          <button
-            onClick={runTest}
-            disabled={isLoading}
-            className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-          >
-            {isLoading ? 'Testing...' : `Test ${testType.charAt(0).toUpperCase() + testType.slice(1)}`}
-          </button>
+          {testType !== 'strategy' && (
+            <button
+              onClick={runTest}
+              disabled={isLoading}
+              className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+            >
+              {isLoading ? 'Testing...' : `Test ${testType.charAt(0).toUpperCase() + testType.slice(1)}`}
+            </button>
+          )}
+          
+          {testType === 'strategy' && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <p className="text-sm text-blue-800 dark:text-blue-200">
+                💡 The Strategy Card component is displayed below. Try switching between Default and Advanced modes, adjusting the investment amount, and testing the execution flow.
+              </p>
+            </div>
+          )}
         </div>
 
         {isLoading && <LoadingState message="Testing API..." />}
@@ -364,6 +390,96 @@ export default function PendleTestPage() {
             title="Test Error"
             message={error}
           />
+        )}
+
+        {/* Strategy Card Test */}
+        {testType === 'strategy' && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md mb-6">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+              Enhanced Strategy Card Test
+            </h3>
+            <div className="space-y-4">
+              <EnhancedStrategyCard
+                poolName="PT-wstETH-2024-12-27"
+                maturity="120 days"
+                ptPercentage={0.6}
+                ytPercentage={0.4}
+                score={85}
+                riskFactor={0.75}
+                comment="Balanced PT/YT positioning with strong yield trend"
+                apy7d={0.125}
+                apy30d={0.118}
+                pool={{
+                  address: '0x34280882267ffa6383b363e278b027be083bbe3b',
+                  name: 'PT-wstETH-2024-12-27',
+                  symbol: 'PT-wstETH',
+                  underlyingAsset: {
+                    address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
+                    symbol: 'wstETH',
+                    name: 'Wrapped Staked ETH',
+                    decimals: 18,
+                    chainId: 8453,
+                    priceUSD: 1,
+                  },
+                  syToken: {
+                    address: '0xcbc72d92b2dc8187414f6734718563898740c0bc',
+                    symbol: 'SY-wstETH',
+                    name: 'SY-wstETH',
+                    decimals: 18,
+                    chainId: 8453,
+                    priceUSD: 1,
+                  },
+                  ptToken: {
+                    address: '0xb253eff1104802b97ac7e3ac9fdd73aece295a2c',
+                    symbol: 'PT-wstETH',
+                    name: 'PT-wstETH',
+                    decimals: 18,
+                    chainId: 8453,
+                    priceUSD: 0.95,
+                  },
+                  ytToken: {
+                    address: '0x04b7fa1e727d7290d6e24fa9b426d0c940283a95',
+                    symbol: 'YT-wstETH',
+                    name: 'YT-wstETH',
+                    decimals: 18,
+                    chainId: 8453,
+                    priceUSD: 0.05,
+                  },
+                  maturity: Math.floor(Date.now() / 1000) + (120 * 24 * 60 * 60),
+                  maturityDate: new Date(Date.now() + (120 * 24 * 60 * 60 * 1000)).toISOString(),
+                  daysToMaturity: 120,
+                  isExpired: false,
+                  tvl: 5000000,
+                  apy: 12.5,
+                  impliedYield: 11.8,
+                  ptPrice: 0.95,
+                  ytPrice: 0.05,
+                  ptDiscount: 0.05,
+                  syPrice: 1,
+                  strategyTag: 'Neutral',
+                  riskLevel: 'neutral',
+                  updatedAt: Date.now(),
+                }}
+                onDetails={() => {
+                  alert('Details clicked! This would open a detailed view.');
+                }}
+              />
+              
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                  Test Instructions:
+                </h4>
+                <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1 list-disc list-inside">
+                  <li>Switch between Default and Advanced modes using the dropdown</li>
+                  <li>Enter an investment amount (e.g., 1000)</li>
+                  <li>In Advanced mode, adjust the PT/YT ratio slider</li>
+                  <li>Set profit take and loss cut percentages in Advanced mode</li>
+                  <li>Click "Execute Strategy" to test the mint transaction (requires connected wallet)</li>
+                  <li>Check transaction status and explorer link after execution</li>
+                </ul>
+              </div>
+            </div>
+          </div>
         )}
 
         {result && (
@@ -686,6 +802,7 @@ export default function PendleTestPage() {
             <li><strong>Pools:</strong> Tests fetching all Pendle pools from API</li>
             <li><strong>Positions:</strong> Requires a wallet address with Pendle positions on Base</li>
             <li><strong>Recommendations:</strong> Tests with sample assets (sKAITO and USDC) to show matching pools and strategy suggestions</li>
+            <li><strong>Strategy Card:</strong> Tests the Enhanced Strategy Card component with mode toggle, ratio adjustment, and execution flow</li>
             <li>Check browser console and server logs for detailed information</li>
           </ul>
         </div>
