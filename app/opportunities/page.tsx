@@ -11,6 +11,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { Accordion, AccordionItem } from '@/components/ui/accordion';
 import { PoolCard } from '@/components/scanner/PoolCard';
 import { usePendlePools } from '@/lib/hooks/usePendlePools';
+import { StrategyCardSkeletonGrid } from '@/components/strategy/StrategyCardSkeleton';
 import { Zap, TrendingUp, SlidersHorizontal } from 'lucide-react';
 import tokenAddresses from '@/lib/constants/token_address.json';
 import type { PendlePool } from '@/types';
@@ -557,12 +558,31 @@ export default function OpportunitiesPage() {
           <div>
             {!isConnected ? (
               <div className="glass rounded-xl p-12 text-center shadow-lg">
-                <div className="text-6xl mb-4">🔐</div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+                <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center">
+                  <svg className="w-12 h-12 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
                   Connect Your Wallet
                 </h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  Connect your wallet to get personalized yield recommendations based on your holdings
+                <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
+                  Get AI-powered yield recommendations tailored to your portfolio. We'll analyze your holdings and suggest the best PT/YT strategies.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto mb-8">
+                  <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="text-3xl mb-2">🎯</div>
+                    <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">Personalized Strategies</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">Based on your actual holdings</p>
+                  </div>
+                  <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                    <div className="text-3xl mb-2">⚡</div>
+                    <p className="text-sm font-semibold text-purple-900 dark:text-purple-100">One-Click Invest</p>
+                    <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">Automated PT/YT allocation</p>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Click "Connect Wallet" in the top right to get started
                 </p>
               </div>
             ) : (
@@ -585,7 +605,14 @@ export default function OpportunitiesPage() {
                   </div>
                 )}
 
-                {isLoading && <LoadingState message="Finding best yield opportunities for you..." />}
+                {isLoading && (
+                  <div className="space-y-6">
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 animate-pulse">
+                      <div className="h-4 bg-blue-200 dark:bg-blue-800 rounded w-3/4"></div>
+                    </div>
+                    <StrategyCardSkeletonGrid count={4} />
+                  </div>
+                )}
 
                 {error && (
                   <ErrorState

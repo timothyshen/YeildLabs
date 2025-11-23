@@ -11,6 +11,7 @@ import { PositionsTable } from '@/components/dashboard/PositionsTable';
 import { ExitToUSDC } from '@/components/dashboard/ExitToUSDC';
 import { PerformanceTracking } from '@/components/dashboard/PerformanceTracking';
 import { StatCard } from '@/components/ui/StatCard';
+import { PositionCardSkeletonGrid } from '@/components/dashboard/PositionCardSkeleton';
 import { SlidersHorizontal, LayoutGrid, List, TrendingUp, Clock, AlertCircle } from 'lucide-react';
 
 type ViewMode = 'grid' | 'table';
@@ -388,7 +389,9 @@ export default function PortfolioPage() {
             </div>
 
             {/* Positions Display */}
-            {isLoading && <LoadingState message="Loading your positions..." />}
+            {isLoading && (
+              <PositionCardSkeletonGrid count={6} />
+            )}
 
             {error && (
               <ErrorState
@@ -398,10 +401,84 @@ export default function PortfolioPage() {
             )}
 
             {!isLoading && !error && filteredPositions.length === 0 && (
-              <EmptyState
-                title="No positions found"
-                description="You don't have any active Pendle positions matching your filters"
-              />
+              <div className="glass rounded-xl p-12 text-center shadow-lg">
+                {positions.length === 0 ? (
+                  <>
+                    {/* No positions at all */}
+                    <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center">
+                      <svg className="w-10 h-10 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                      Start Your DeFi Journey
+                    </h2>
+                    <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
+                      You don't have any active Pendle positions yet. Discover high-yield opportunities and start earning today.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                      <a
+                        href="/opportunities"
+                        className="inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl"
+                      >
+                        <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        Discover Opportunities
+                      </a>
+                      <a
+                        href="/opportunities"
+                        className="inline-flex items-center justify-center px-6 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-semibold transition-colors"
+                      >
+                        Learn More
+                      </a>
+                    </div>
+                    <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+                      <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="text-2xl mb-2">🎯</div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">High Yields</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Earn competitive APY on your assets</p>
+                      </div>
+                      <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                        <div className="text-2xl mb-2">🛡️</div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Risk Control</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Manage risk with PT/YT splits</p>
+                      </div>
+                      <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                        <div className="text-2xl mb-2">⚡</div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Easy to Use</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Smart recommendations for you</p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Has positions but none match filters */}
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                      No positions match your filters
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">
+                      Try adjusting your filters to see more positions
+                    </p>
+                    <button
+                      onClick={() => {
+                        setMinAPY(0);
+                        setMaxAPY(100);
+                        setPositionTypes(['PT', 'YT', 'LP']);
+                        setFilterStatus('all');
+                      }}
+                      className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                    >
+                      Reset All Filters
+                    </button>
+                  </>
+                )}
+              </div>
             )}
 
             {!isLoading && !error && filteredPositions.length > 0 && (
