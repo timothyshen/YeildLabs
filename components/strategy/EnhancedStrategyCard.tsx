@@ -13,6 +13,9 @@ import { useTokenBalance } from '@/lib/hooks/useTokenBalance';
 import { useTokenAddress } from '@/lib/hooks/useTokenAddress';
 import { useToast } from '@/components/ui/Toast';
 import { TokenAddressIndicator } from '@/components/ui/TokenAddressIndicator';
+import { use1inchSwap } from '@/lib/hooks/use1inchSwap';
+import { SwapPreviewModal } from '@/components/swap/SwapPreviewModal';
+import { BASE_TOKENS } from '@/lib/1inch/config';
 import type { PendlePool } from '@/types';
 
 interface EnhancedStrategyCardProps {
@@ -48,6 +51,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   const { executeMintPy, isLoading: isMintLoading, isSuccess: isMintSuccess, hash: mintHash, error: mintError } = usePendleMint();
   const { executeRedeemPy, executeRedeemSy, isLoading: isRedeemLoading, isSuccess: isRedeemSuccess, hash: redeemHash, error: redeemError } = usePendleRedeem();
   const { showToast } = useToast();
+  const { quote: swapQuote, isLoading: isSwapLoading, error: swapError, getQuote, executeSwap, reset: resetSwap } = use1inchSwap();
 
   const [activeTab, setActiveTab] = useState<'invest' | 'redeem'>('invest');
   const [mode, setMode] = useState<'default' | 'advanced'>('default');
@@ -57,6 +61,8 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   const [ytRatio, setYtRatio] = useState<number>(Math.round(defaultYtPercentage * 100));
   const [profitTake, setProfitTake] = useState<number>(15);
   const [lossCut, setLossCut] = useState<number>(-5);
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [isExecutingSwapAndBuy, setIsExecutingSwapAndBuy] = useState(false);
 
   // Get token symbol from pool
   const tokenSymbol = typeof pool.underlyingAsset === 'string'
@@ -138,6 +144,13 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     tokenAddress: isValidTokenAddress ? underlyingTokenAddress : undefined,
     userAddress: address,
     enabled: !!address && !!isValidTokenAddress && !isLoadingTokenAddress,
+  });
+
+  // Check user's USDC balance for swap option
+  const usdcBalance = useTokenBalance({
+    tokenAddress: BASE_TOKENS.USDC,
+    userAddress: address,
+    enabled: !!address,
   });
 
   // Get PT, YT, and SY token addresses
@@ -225,6 +238,115 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     const requiredAmount = parseFloat(investmentAmount);
     return userBalance.formatted >= requiredAmount;
   }, [investmentAmount, userBalance]);
+
+  // Check if user can swap USDC to get the underlying token
+  const canSwapUSDC = useMemo(() => {
+    if (!investmentAmount || parseFloat(investmentAmount) <= 0) {
+      return false;
+    }
+    if (!hasSufficientBalance && usdcBalance.formatted > 0) {
+      const requiredAmount = parseFloat(investmentAmount);
+      // Assuming rough 1:1 conversion for stablecoins (will get exact quote later)
+      return usdcBalance.formatted >= requiredAmount;
+    }
+    return false;
+  }, [investmentAmount, hasSufficientBalance, usdcBalance]);
+
+  /**
+   * Handle swap from USDC to underlying token and then buy PT/YT
+   */
+  const handleSwapAndBuy = async () => {
+    if (!address || !investmentAmount || !underlyingTokenAddress) return;
+
+    try {
+      setIsExecutingSwapAndBuy(true);
+
+      // Get token decimals
+      const usdcDecimals = 6; // USDC has 6 decimals
+      const underlyingDecimals = 18; // Most tokens have 18 decimals (USDe, WETH, etc.)
+
+      // Get swap quote from USDC to underlying token
+      const quote = await getQuote({
+        fromToken: BASE_TOKENS.USDC,
+        toToken: underlyingTokenAddress,
+        amount: investmentAmount,
+        fromSymbol: 'USDC',
+        toSymbol: tokenSymbol || 'TOKEN',
+        fromDecimals: usdcDecimals,
+        toDecimals: underlyingDecimals,
+        slippage: 1,
+        chainId: pool.chainId || 8453,
+      });
+
+      if (quote) {
+        setShowSwapModal(true);
+      }
+    } catch (error) {
+      console.error('Error getting swap quote:', error);
+      showToast({
+        type: 'error',
+        title: 'Swap Quote Failed',
+        message: error instanceof Error ? error.message : 'Failed to get swap quote',
+      });
+      setIsExecutingSwapAndBuy(false);
+    }
+  };
+
+  /**
+   * Confirm and execute the swap, then buy PT/YT
+   */
+  const handleConfirmSwap = async () => {
+    if (!address || !investmentAmount || !underlyingTokenAddress) return;
+
+    try {
+      showToast({
+        type: 'loading',
+        title: 'Swapping USDC',
+        message: 'Please confirm the swap transaction in your wallet...',
+        duration: 0,
+      });
+
+      // Execute swap from USDC to underlying token
+      const swapTxData = await executeSwap({
+        fromToken: BASE_TOKENS.USDC,
+        toToken: underlyingTokenAddress,
+        amount: investmentAmount,
+        fromDecimals: 6,
+        slippage: 1,
+        chainId: pool.chainId || 8453,
+      });
+
+      if (!swapTxData) {
+        throw new Error('Failed to execute swap');
+      }
+
+      // Close modal
+      setShowSwapModal(false);
+      resetSwap();
+
+      // Show success message
+      showToast({
+        type: 'success',
+        title: 'Swap Successful!',
+        message: `Swapped USDC to ${tokenSymbol}. Now executing PT/YT purchase...`,
+      });
+
+      // Wait a bit for the swap to settle
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Now execute the buy PT/YT with the swapped tokens
+      await handleExecute();
+    } catch (error) {
+      console.error('Swap and buy error:', error);
+      showToast({
+        type: 'error',
+        title: 'Swap Failed',
+        message: error instanceof Error ? error.message : 'Failed to execute swap',
+      });
+    } finally {
+      setIsExecutingSwapAndBuy(false);
+    }
+  };
 
   const handleExecute = async () => {
     if (!address) {
@@ -809,6 +931,16 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
               )}
             </span>
           </div>
+
+          {/* Show USDC balance when swap is possible */}
+          {address && canSwapUSDC && (
+            <div className="flex justify-between items-center text-sm mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+              <span className="text-gray-600 dark:text-gray-400">USDC Balance:</span>
+              <span className="font-semibold text-purple-600 dark:text-purple-400">
+                {usdcBalance.formatted.toFixed(2)} USDC
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Calculated Amounts Preview */}
@@ -838,6 +970,11 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
             {!hasSufficientBalance && (
               <p className="text-xs text-red-600 dark:text-red-400 mt-2">
                 ⚠️ Insufficient balance. You need ${parseFloat(investmentAmount).toFixed(2)} but only have ${userBalance.formatted.toFixed(4)}.
+                {canSwapUSDC && (
+                  <span className="block text-purple-600 dark:text-purple-400 mt-1">
+                    💡 You can swap USDC to get the required amount
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -949,24 +1086,32 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         {activeTab === 'invest' ? (
           <Button
             className={`rounded-xl px-6 py-2 font-medium flex items-center gap-2 disabled:opacity-50 ${
-              !hasSufficientBalance && address && investmentAmount
+              canSwapUSDC
+                ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                : !hasSufficientBalance && address && investmentAmount
                 ? 'bg-red-600 hover:bg-red-700 text-white'
                 : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
-            onClick={handleExecute}
+            onClick={canSwapUSDC ? handleSwapAndBuy : handleExecute}
             disabled={
               !address ||
               !investmentAmount ||
               parseFloat(investmentAmount) <= 0 ||
               isMintLoading ||
-              !hasSufficientBalance ||
+              isExecutingSwapAndBuy ||
+              (!hasSufficientBalance && !canSwapUSDC) ||
               userBalance.isLoading
             }
           >
-            {isMintLoading ? (
+            {isMintLoading || isExecutingSwapAndBuy ? (
               <>
                 <Zap className="w-4 h-4 animate-pulse" />
-                Executing...
+                {isExecutingSwapAndBuy ? 'Getting Quote...' : 'Executing...'}
+              </>
+            ) : canSwapUSDC ? (
+              <>
+                <ArrowLeftRight className="w-4 h-4" />
+                Swap & Buy
               </>
             ) : !hasSufficientBalance && address && investmentAmount ? (
               <>
@@ -1055,6 +1200,20 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           </p>
         </div>
       )}
+
+      {/* Swap Preview Modal */}
+      <SwapPreviewModal
+        isOpen={showSwapModal}
+        onClose={() => {
+          setShowSwapModal(false);
+          resetSwap();
+          setIsExecutingSwapAndBuy(false);
+        }}
+        onConfirm={handleConfirmSwap}
+        quote={swapQuote}
+        isLoading={isSwapLoading}
+        error={swapError}
+      />
     </Card>
   );
 };
