@@ -52,9 +52,32 @@ export const SUPPORTED_STABLECOINS = [
 export type StablecoinSymbol = typeof SUPPORTED_STABLECOINS[number];
 
 /**
+ * Supported DEX aggregators for token swaps
+ */
+export const SUPPORTED_AGGREGATORS = [
+  '1inch',
+  'kyberswap',
+  'paraswap',
+] as const;
+
+export type AggregatorName = typeof SUPPORTED_AGGREGATORS[number];
+
+/**
+ * Default aggregator to use for token swaps
+ */
+export const DEFAULT_AGGREGATOR: AggregatorName = '1inch';
+
+/**
  * Check if an asset is a supported stablecoin
  */
 export function isSupportedStablecoin(symbol: string): boolean {
   return SUPPORTED_STABLECOINS.includes(symbol as StablecoinSymbol);
+}
+
+/**
+ * Check if an aggregator is supported
+ */
+export function isSupportedAggregator(name: string): boolean {
+  return SUPPORTED_AGGREGATORS.includes(name as AggregatorName);
 }
 

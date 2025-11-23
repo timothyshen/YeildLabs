@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { ConnectKitButton } from 'connectkit';
 import { ReactNode } from 'react';
+import { NetworkBadge } from './NetworkBadge';
 
 interface PageHeaderProps {
   title: string;
@@ -61,6 +62,7 @@ export function PageHeader({
           </>
         )}
         {actions}
+        <NetworkBadge />
         <ConnectKitButton />
       </div>
     </header>

@@ -8,6 +8,8 @@ import { ArrowRight, Settings, Zap } from 'lucide-react';
 import { parseEther, formatEther } from 'viem';
 import { usePendleMint } from '@/lib/hooks/usePendleMint';
 import { useAccount } from 'wagmi';
+import { useTokenBalance } from '@/lib/hooks/useTokenBalance';
+import { useToast } from '@/components/ui/Toast';
 import type { PendlePool } from '@/types';
 
 interface EnhancedStrategyCardProps {
@@ -39,6 +41,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
 }) => {
   const { address } = useAccount();
   const { executeMintPy, isLoading, isSuccess, hash, error } = usePendleMint();
+  const { showToast } = useToast();
   
   const [mode, setMode] = useState<'default' | 'advanced'>('default');
   const [investmentAmount, setInvestmentAmount] = useState<string>('');
@@ -46,6 +49,18 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   const [ytRatio, setYtRatio] = useState<number>(Math.round(defaultYtPercentage * 100));
   const [profitTake, setProfitTake] = useState<number>(15);
   const [lossCut, setLossCut] = useState<number>(-5);
+
+  // Get underlying token address
+  const underlyingTokenAddress = typeof pool.underlyingAsset === 'string'
+    ? pool.underlyingAsset
+    : pool.underlyingAsset.address;
+
+  // Check user's balance for the underlying token
+  const userBalance = useTokenBalance({
+    tokenAddress: underlyingTokenAddress,
+    userAddress: address,
+    enabled: !!address && !!underlyingTokenAddress,
+  });
 
   // Sync ratios when mode changes
   React.useEffect(() => {
@@ -85,8 +100,43 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     };
   }, [investmentAmount, ptRatio, ytRatio]);
 
+  // Check if user has sufficient balance
+  const hasSufficientBalance = useMemo(() => {
+    if (!investmentAmount || parseFloat(investmentAmount) <= 0) {
+      return true; // No amount entered, don't show error
+    }
+    if (userBalance.isLoading) {
+      return true; // Still loading, don't show error yet
+    }
+    const requiredAmount = parseFloat(investmentAmount);
+    return userBalance.formatted >= requiredAmount;
+  }, [investmentAmount, userBalance]);
+
   const handleExecute = async () => {
-    if (!address || !investmentAmount || parseFloat(investmentAmount) <= 0) {
+    if (!address) {
+      showToast({
+        type: 'error',
+        title: 'Wallet Not Connected',
+        message: 'Please connect your wallet to execute the strategy',
+      });
+      return;
+    }
+
+    if (!investmentAmount || parseFloat(investmentAmount) <= 0) {
+      showToast({
+        type: 'error',
+        title: 'Invalid Amount',
+        message: 'Please enter a valid investment amount',
+      });
+      return;
+    }
+
+    if (!hasSufficientBalance) {
+      showToast({
+        type: 'error',
+        title: 'Insufficient Balance',
+        message: `You need ${parseFloat(investmentAmount).toFixed(2)} but only have ${userBalance.formatted.toFixed(4)}`,
+      });
       return;
     }
 
@@ -103,6 +153,14 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       const ytToken = typeof pool.ytToken === 'string'
         ? pool.ytToken
         : pool.ytToken.address;
+
+      // Show loading toast
+      showToast({
+        type: 'loading',
+        title: 'Executing Strategy',
+        message: 'Please confirm the transaction in your wallet...',
+        duration: 0, // Don't auto-dismiss loading toasts
+      });
 
       // Execute mint PT + YT
       // Note: mintPyFromToken mints both PT and YT in equal amounts (1:1 ratio)
@@ -135,8 +193,41 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       }
     } catch (err) {
       console.error('Execution error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      showToast({
+        type: 'error',
+        title: 'Transaction Failed',
+        message: errorMessage,
+      });
     }
   };
+
+  // Show success/error notifications
+  React.useEffect(() => {
+    if (isSuccess && hash) {
+      showToast({
+        type: 'success',
+        title: 'Strategy Executed Successfully!',
+        message: `Transaction confirmed. PT + YT tokens minted.`,
+        action: {
+          label: 'View on BaseScan',
+          onClick: () => {
+            window.open(`https://basescan.org/tx/${hash}`, '_blank');
+          },
+        },
+      });
+    }
+  }, [isSuccess, hash, showToast]);
+
+  React.useEffect(() => {
+    if (error) {
+      showToast({
+        type: 'error',
+        title: 'Transaction Error',
+        message: error.message || 'An error occurred during execution',
+      });
+    }
+  }, [error, showToast]);
 
   const handleRatioChange = (newPtRatio: number) => {
     if (mode === 'advanced') {
@@ -279,9 +370,29 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           />
         </div>
 
+        {/* Balance Display */}
+        {address && underlyingTokenAddress && (
+          <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-600 dark:text-gray-400">Your Balance:</span>
+              <span className="font-semibold text-gray-900 dark:text-white">
+                {userBalance.isLoading ? (
+                  <span className="text-gray-400">Loading...</span>
+                ) : (
+                  `${userBalance.formatted.toFixed(4)} ${typeof pool.underlyingAsset === 'string' ? pool.underlyingAsset : pool.underlyingAsset.symbol}`
+                )}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Calculated Amounts Preview */}
         {investmentAmount && parseFloat(investmentAmount) > 0 && (
-          <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+          <div className={`mt-3 p-3 rounded-lg ${
+            hasSufficientBalance 
+              ? 'bg-blue-50 dark:bg-blue-900/20' 
+              : 'bg-red-50 dark:bg-red-900/20'
+          }`}>
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Will Buy:
             </p>
@@ -299,6 +410,11 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
                 </span>
               </div>
             </div>
+            {!hasSufficientBalance && (
+              <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+                ⚠️ Insufficient balance. You need ${parseFloat(investmentAmount).toFixed(2)} but only have ${userBalance.formatted.toFixed(4)}.
+              </p>
+            )}
           </div>
         )}
       </CardContent>
@@ -313,14 +429,30 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         </Button>
 
         <Button
-          className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-6 py-2 font-medium flex items-center gap-2 disabled:opacity-50"
+          className={`rounded-xl px-6 py-2 font-medium flex items-center gap-2 disabled:opacity-50 ${
+            !hasSufficientBalance && address && investmentAmount
+              ? 'bg-red-600 hover:bg-red-700 text-white'
+              : 'bg-blue-600 hover:bg-blue-700 text-white'
+          }`}
           onClick={handleExecute}
-          disabled={!address || !investmentAmount || parseFloat(investmentAmount) <= 0 || isLoading}
+          disabled={
+            !address || 
+            !investmentAmount || 
+            parseFloat(investmentAmount) <= 0 || 
+            isLoading || 
+            !hasSufficientBalance ||
+            userBalance.isLoading
+          }
         >
           {isLoading ? (
             <>
               <Zap className="w-4 h-4 animate-pulse" />
               Executing...
+            </>
+          ) : !hasSufficientBalance && address && investmentAmount ? (
+            <>
+              <Zap className="w-4 h-4" />
+              Insufficient Balance
             </>
           ) : (
             <>

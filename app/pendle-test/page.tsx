@@ -6,7 +6,9 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { EnhancedStrategyCard } from '@/components/strategy/EnhancedStrategyCard';
+import { NetworkBadge } from '@/components/ui/NetworkBadge';
 import type { PendlePool } from '@/types';
+import { fetchMarkets } from '@/lib/pendle/apiClient';
 
 interface PurchasedPosition {
   id: string;
@@ -235,11 +237,14 @@ export default function PendleTestPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8">
-        <PageHeader
-          title="Pendle API Test"
-          subtitle="Test all Pendle API endpoints"
-          showNavigation={false}
-        />
+        <div className="flex items-center justify-between mb-6">
+          <PageHeader
+            title="Pendle API Test"
+            subtitle="Test all Pendle API endpoints"
+            showNavigation={false}
+          />
+          <NetworkBadge />
+        </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md mb-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
@@ -745,30 +750,75 @@ export default function PendleTestPage() {
                           )}
                         </div>
 
-                        {/* Action Button */}
+                        {/* Enhanced Strategy Card - Replace simple button */}
                         {!isPurchased ? (
-                          <button
-                            onClick={() => {
-                              const pool = rec.pools?.bestPT || rec.pools?.bestYT;
-                              const newPosition: PurchasedPosition = {
-                                id: recId,
-                                assetSymbol: rec.asset?.symbol || 'UNKNOWN',
-                                poolAddress: pool?.address || '',
-                                poolName: pool?.name || 'Unknown Pool',
-                                strategy: rec.strategy?.recommended || 'SPLIT',
-                                ptAllocation: ptPercent,
-                                ytAllocation: ytPercent,
-                                purchaseAmount: 100,
-                                purchaseDate: Date.now(),
-                                expectedAPY: rec.strategy?.expectedAPY || 0,
-                                currentValue: 100,
-                              };
-                              setPurchasedPositions(prev => [...prev, newPosition]);
-                            }}
-                            className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg"
-                          >
-                            💰 Purchase $100 (Test Mode)
-                          </button>
+                          <div className="mt-4">
+                            <EnhancedStrategyCard
+                              poolName={rec.pools?.bestPT?.name || rec.pools?.bestYT?.name || 'Unknown Pool'}
+                              maturity={`${rec.pools?.bestPT?.daysToMaturity || rec.pools?.bestYT?.daysToMaturity || 0} days`}
+                              ptPercentage={ptPercent / 100}
+                              ytPercentage={ytPercent / 100}
+                              score={85}
+                              riskFactor={0.75}
+                              comment={rec.strategy?.reasoning || 'Balanced PT/YT positioning'}
+                              apy7d={(rec.pools?.bestPT?.apy || rec.pools?.bestYT?.apy || 0) / 100}
+                              apy30d={(rec.pools?.bestPT?.apy || rec.pools?.bestYT?.apy || 0) / 100}
+                              pool={rec.pools?.bestPT || rec.pools?.bestYT || {
+                                address: rec.pools?.bestPT?.address || rec.pools?.bestYT?.address || '',
+                                name: rec.pools?.bestPT?.name || rec.pools?.bestYT?.name || '',
+                                symbol: rec.pools?.bestPT?.symbol || rec.pools?.bestYT?.symbol || '',
+                                underlyingAsset: {
+                                  address: rec.asset?.token?.address || '',
+                                  symbol: rec.asset?.symbol || '',
+                                  name: rec.asset?.symbol || '',
+                                  decimals: 18,
+                                  chainId: 8453,
+                                  priceUSD: 1,
+                                },
+                                syToken: {
+                                  address: rec.pools?.bestPT?.syToken?.address || '',
+                                  symbol: rec.pools?.bestPT?.syToken?.symbol || '',
+                                  name: rec.pools?.bestPT?.syToken?.name || '',
+                                  decimals: 18,
+                                  chainId: 8453,
+                                  priceUSD: 1,
+                                },
+                                ptToken: {
+                                  address: rec.pools?.bestPT?.ptToken?.address || '',
+                                  symbol: rec.pools?.bestPT?.ptToken?.symbol || '',
+                                  name: rec.pools?.bestPT?.ptToken?.name || '',
+                                  decimals: 18,
+                                  chainId: 8453,
+                                  priceUSD: rec.pools?.bestPT?.ptPrice || 0.95,
+                                },
+                                ytToken: {
+                                  address: rec.pools?.bestPT?.ytToken?.address || '',
+                                  symbol: rec.pools?.bestPT?.ytToken?.symbol || '',
+                                  name: rec.pools?.bestPT?.ytToken?.name || '',
+                                  decimals: 18,
+                                  chainId: 8453,
+                                  priceUSD: rec.pools?.bestPT?.ytPrice || 0.05,
+                                },
+                                maturity: Math.floor(Date.now() / 1000) + ((rec.pools?.bestPT?.daysToMaturity || 120) * 24 * 60 * 60),
+                                maturityDate: new Date(Date.now() + ((rec.pools?.bestPT?.daysToMaturity || 120) * 24 * 60 * 60 * 1000)).toISOString(),
+                                daysToMaturity: rec.pools?.bestPT?.daysToMaturity || 120,
+                                isExpired: false,
+                                tvl: rec.pools?.bestPT?.tvl || 0,
+                                apy: rec.pools?.bestPT?.apy || rec.pools?.bestYT?.apy || 0,
+                                impliedYield: rec.pools?.bestPT?.impliedYield || 0,
+                                ptPrice: rec.pools?.bestPT?.ptPrice || 0.95,
+                                ytPrice: rec.pools?.bestPT?.ytPrice || 0.05,
+                                ptDiscount: rec.pools?.bestPT?.ptDiscount || 0.05,
+                                syPrice: 1,
+                                strategyTag: 'Neutral',
+                                riskLevel: 'neutral',
+                                updatedAt: Date.now(),
+                              }}
+                              onDetails={() => {
+                                alert(`Pool Details: ${rec.pools?.bestPT?.name || rec.pools?.bestYT?.name}`);
+                              }}
+                            />
+                          </div>
                         ) : (
                           <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-center">
                             <p className="text-sm text-green-800 dark:text-green-200">

@@ -5,6 +5,8 @@
  */
 
 import { callConvertAPI, getTransactionData, type ConvertParams } from './sdkClient';
+import { DEFAULT_AGGREGATOR } from './config';
+import { getBestAggregatorForChain } from './aggregators';
 
 export interface SwapParams {
   chainId: number;
@@ -123,6 +125,7 @@ export async function swapYtToToken(params: SwapParams) {
 
 /**
  * Swap token to PT using aggregator (for tokens that can't be directly swapped)
+ * Uses 1inch by default (can be overridden)
  */
 export async function swapTokenToPtUsingAggregation(params: SwapParams) {
   return getTransactionData(params.chainId, {
@@ -132,12 +135,13 @@ export async function swapTokenToPtUsingAggregation(params: SwapParams) {
     receiver: params.receiver,
     slippage: params.slippage,
     enableAggregator: true,
-    aggregators: params.aggregators || 'kyberswap',
+    aggregators: params.aggregators || DEFAULT_AGGREGATOR,
   });
 }
 
 /**
  * Swap PT to token using aggregator
+ * Uses 1inch by default (can be overridden)
  */
 export async function swapPtToTokenUsingAggregation(params: SwapParams) {
   return getTransactionData(params.chainId, {
@@ -147,17 +151,22 @@ export async function swapPtToTokenUsingAggregation(params: SwapParams) {
     receiver: params.receiver,
     slippage: params.slippage,
     enableAggregator: true,
-    aggregators: params.aggregators || 'kyberswap',
+    aggregators: params.aggregators || DEFAULT_AGGREGATOR,
     additionalData: 'impliedApy,effectiveApy',
   });
 }
 
 /**
  * Generic swap function - automatically determines swap type
+ * Uses best aggregator for chain if aggregator is enabled but not specified
  */
 export async function swap(params: SwapParams) {
-  // For now, use the generic convert API
-  // In the future, we could add logic to determine the best swap function
+  // Determine aggregator if enabled but not specified
+  let aggregators = params.aggregators;
+  if (params.enableAggregator && !aggregators) {
+    aggregators = getBestAggregatorForChain(params.chainId);
+  }
+
   return getTransactionData(params.chainId, {
     tokensIn: params.tokenIn,
     amountsIn: params.amountIn,
@@ -165,7 +174,7 @@ export async function swap(params: SwapParams) {
     receiver: params.receiver,
     slippage: params.slippage,
     enableAggregator: params.enableAggregator,
-    aggregators: params.aggregators,
+    aggregators,
   });
 }
 
