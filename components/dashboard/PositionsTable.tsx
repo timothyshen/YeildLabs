@@ -66,9 +66,12 @@ export function PositionsTable({ positions }: PositionsTableProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {positions.map((position, index) => (
+            {positions.map((position, index) => {
+              const poolId = position.poolAddress || (position.pool as any)?.address || `pool-${index}`;
+              const poolName = (position.pool as any)?.name || position.pool;
+              return (
               <tr
-                key={`${position.pool}-${index}`}
+                key={poolId}
                 className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
               >
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -78,7 +81,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
                     </div>
                     <div>
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        {position.pool}
+                        {poolName}
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
                         Pendle Position
@@ -89,7 +92,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
                 <td className="px-6 py-4 whitespace-nowrap text-right">
                   {position.ptBalance > 0 ? (
                     <span className="text-sm font-mono text-gray-900 dark:text-white">
-                      {position.ptBalance.toFixed(2)}
+                      {parseFloat(position.ptBalance || 0).toFixed(2)}
                     </span>
                   ) : (
                     <span className="text-sm text-gray-400">-</span>
@@ -98,7 +101,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
                 <td className="px-6 py-4 whitespace-nowrap text-right">
                   {position.ytBalance > 0 ? (
                     <span className="text-sm font-mono text-gray-900 dark:text-white">
-                      {position.ytBalance.toFixed(2)}
+                      {parseFloat(position.ytBalance || 0).toFixed(2)}
                     </span>
                   ) : (
                     <span className="text-sm text-gray-400">-</span>
@@ -114,7 +117,8 @@ export function PositionsTable({ positions }: PositionsTableProps) {
                   {formatPnL(position.unrealizedPnL)}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
           <tfoot className="bg-gray-50 dark:bg-gray-900">
             <tr>

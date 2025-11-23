@@ -83,24 +83,27 @@ export function ExitToUSDC({ positions, onExit }: ExitToUSDCProps) {
         <>
           {/* Position Selection */}
           <div className="space-y-2 mb-6">
-            {positions.map((position) => (
+            {positions.map((position) => {
+              const poolId = position.poolAddress || (position.pool as any)?.address || position.pool;
+              const poolName = (position.pool as any)?.name || position.pool;
+              return (
               <label
-                key={position.pool}
+                key={poolId}
                 className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
-                    checked={selectedPositions.has(position.pool)}
-                    onChange={() => handleTogglePosition(position.pool)}
+                    checked={selectedPositions.has(poolId)}
+                    onChange={() => handleTogglePosition(poolId)}
                     className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                   />
                   <div>
                     <p className="font-medium text-gray-900 dark:text-white">
-                      {position.pool}
+                      {poolName}
                     </p>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      PT: {position.ptBalance.toFixed(2)} | YT: {position.ytBalance.toFixed(2)}
+                      PT: {parseFloat(position.ptBalance || 0).toFixed(2)} | YT: {parseFloat(position.ytBalance || 0).toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -115,7 +118,8 @@ export function ExitToUSDC({ positions, onExit }: ExitToUSDCProps) {
                   </p>
                 </div>
               </label>
-            ))}
+              );
+            })}
           </div>
 
           {/* Exit Summary */}

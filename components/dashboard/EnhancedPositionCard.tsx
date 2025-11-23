@@ -21,16 +21,16 @@ export function EnhancedPositionCard({ position, onManage }: EnhancedPositionCar
 
   // Handle both old and new API response formats
   const poolName = (position as any).pool?.name || position.pool;
-  const ptBalance = (position as any).ptBalanceFormatted || position.ptBalance || 0;
-  const ytBalance = (position as any).ytBalanceFormatted || position.ytBalance || 0;
-  const currentValue = position.currentValue || 0;
-  const unrealizedPnL = position.unrealizedPnL || 0;
-  const realizedPnL = position.realizedPnL || 0;
-  const costBasis = (position as any).entryValue || position.costBasis || currentValue;
-  const poolApy = (position as any).pool?.apy || 0;
+  const ptBalance = parseFloat((position as any).ptBalanceFormatted || position.ptBalance || 0);
+  const ytBalance = parseFloat((position as any).ytBalanceFormatted || position.ytBalance || 0);
+  const currentValue = parseFloat(position.currentValue || 0);
+  const unrealizedPnL = parseFloat(position.unrealizedPnL || 0);
+  const realizedPnL = parseFloat(position.realizedPnL || 0);
+  const costBasis = parseFloat((position as any).entryValue || position.costBasis || currentValue);
+  const poolApy = parseFloat((position as any).pool?.apy || 0);
   const poolMaturity = (position as any).pool?.maturity;
-  const ptValue = (position as any).ptValue || 0;
-  const ytValue = (position as any).ytValue || 0;
+  const ptValue = parseFloat((position as any).ptValue || 0);
+  const ytValue = parseFloat((position as any).ytValue || 0);
 
   const totalPnL = realizedPnL + unrealizedPnL;
   const pnlPercent = costBasis !== 0 ? (totalPnL / costBasis) * 100 : 0;
@@ -48,36 +48,21 @@ export function EnhancedPositionCard({ position, onManage }: EnhancedPositionCar
         className="p-6 cursor-pointer hover:bg-white/10 transition-all"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-center justify-between mb-4">
+        {/* Title and Value Row */}
+        <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
-            <h4 className="text-lg font-bold text-gray-900 dark:text-white">
+            <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
               {poolName}
             </h4>
-            <div className="flex items-center gap-3 mt-2">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Principal & Yield Tokens
-              </p>
-              {poolApy > 0 && (
-                <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-xs font-semibold rounded-full">
-                  {(poolApy / 100).toFixed(2)}% APY
-                </span>
-              )}
-              {daysToMaturity !== null && (
-                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
-                  daysToMaturity <= 30
-                    ? 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                }`}>
-                  {daysToMaturity}d to maturity
-                </span>
-              )}
-            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Principal & Yield Tokens
+            </p>
           </div>
-          <div className="text-right">
-            <p className="text-xl font-bold text-gray-900 dark:text-white">
+          <div className="text-right ml-4">
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">
               {formatCurrency(currentValue)}
             </p>
-            <p className={`text-sm font-medium ${
+            <p className={`text-sm font-medium mt-1 ${
               isProfitable ? 'text-green-600' : 'text-red-600'
             }`}>
               {isProfitable ? '+' : ''}{formatCurrency(totalPnL)} ({isProfitable ? '+' : ''}{pnlPercent.toFixed(2)}%)
@@ -85,26 +70,44 @@ export function EnhancedPositionCard({ position, onManage }: EnhancedPositionCar
           </div>
         </div>
 
+        {/* Badges Row */}
+        <div className="flex items-center gap-2 mb-4">
+          {poolApy > 0 && (
+            <span className="inline-flex items-center px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-sm font-semibold rounded-full">
+              {(poolApy / 100).toFixed(2)}% APY
+            </span>
+          )}
+          {daysToMaturity !== null && (
+            <span className={`inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full ${
+              daysToMaturity <= 30
+                ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
+                : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+            }`}>
+              {daysToMaturity}d to maturity
+            </span>
+          )}
+        </div>
+
         {/* Token Balances */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
-            <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">PT Balance</p>
-            <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800/30">
+            <p className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-2 uppercase tracking-wide">PT Balance</p>
+            <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mb-1">
               {ptBalance.toFixed(4)}
             </p>
             {ptValue > 0 && (
-              <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+              <p className="text-sm text-blue-700 dark:text-blue-300">
                 ≈ {formatCurrency(ptValue)}
               </p>
             )}
           </div>
-          <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
-            <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">YT Balance</p>
-            <p className="text-lg font-bold text-purple-900 dark:text-purple-100">
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-4 border border-purple-200 dark:border-purple-800/30">
+            <p className="text-xs font-medium text-purple-600 dark:text-purple-400 mb-2 uppercase tracking-wide">YT Balance</p>
+            <p className="text-2xl font-bold text-purple-900 dark:text-purple-100 mb-1">
               {ytBalance.toFixed(4)}
             </p>
             {ytValue > 0 && (
-              <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+              <p className="text-sm text-purple-700 dark:text-purple-300">
                 ≈ {formatCurrency(ytValue)}
               </p>
             )}
@@ -112,9 +115,23 @@ export function EnhancedPositionCard({ position, onManage }: EnhancedPositionCar
         </div>
 
         {/* Expand indicator */}
-        <div className="flex justify-center mt-4">
-          <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-            {isExpanded ? '▲ Less' : '▼ More'}
+        <div className="flex justify-center mt-5 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <button className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            {isExpanded ? (
+              <>
+                <span>Show Less</span>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+              </>
+            ) : (
+              <>
+                <span>Show Details</span>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </>
+            )}
           </button>
         </div>
       </div>
