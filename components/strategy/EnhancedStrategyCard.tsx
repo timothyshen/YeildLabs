@@ -297,6 +297,15 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     const ptAmount = total * (ptRatio / 100);
     const ytAmount = total * (ytRatio / 100);
 
+    console.log('💰 Calculated amounts:', {
+      investmentAmount,
+      total,
+      ptRatio,
+      ytRatio,
+      ptAmount,
+      ytAmount,
+    });
+
     return {
       ptAmount: parseEther(ptAmount.toString()).toString(),
       ytAmount: parseEther(ytAmount.toString()).toString(),
@@ -1242,12 +1251,15 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         <div className="mt-4">
           <div className="flex justify-between text-sm mb-1 font-medium">
             <span className="text-gray-700 dark:text-gray-300">
-              PT {ptRatio}%
+              Target Allocation: PT {ptRatio}%
             </span>
             <span className="text-gray-700 dark:text-gray-300">
               YT {ytRatio}%
             </span>
           </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            (Minting creates 50/50, swap manually to achieve target)
+          </p>
 
           {mode === 'default' ? (
             <Progress value={ptRatio} className="h-2" />
@@ -1399,27 +1411,30 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         {/* Calculated Amounts Preview */}
         {investmentAmount && parseFloat(investmentAmount) > 0 && (
           <div className={`mt-3 p-3 rounded-lg ${
-            hasSufficientBalance 
-              ? 'bg-blue-50 dark:bg-blue-900/20' 
+            hasSufficientBalance
+              ? 'bg-blue-50 dark:bg-blue-900/20'
               : 'bg-red-50 dark:bg-red-900/20'
           }`}>
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Will Buy:
+              Will Mint (Pendle always creates equal PT and YT):
             </p>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">PT:</span>
+                <span className="text-gray-600 dark:text-gray-400">PT tokens:</span>
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  ${calculatedAmounts.ptAmountFormatted.toFixed(2)} ({ptRatio}%)
+                  {parseFloat(investmentAmount).toFixed(2)} PT
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">YT:</span>
+                <span className="text-gray-600 dark:text-gray-400">YT tokens:</span>
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  ${calculatedAmounts.ytAmountFormatted.toFixed(2)} ({ytRatio}%)
+                  {parseFloat(investmentAmount).toFixed(2)} YT
                 </span>
               </div>
             </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
+              ℹ️ Pendle mints PT and YT in 1:1 ratio. To achieve {ptRatio}/{ytRatio} allocation, you can swap tokens after minting.
+            </p>
             {!hasSufficientBalance && (
               <p className="text-xs text-red-600 dark:text-red-400 mt-2">
                 ⚠️ Insufficient balance. You need ${parseFloat(investmentAmount).toFixed(2)} but only have ${userBalance.formatted.toFixed(4)}.

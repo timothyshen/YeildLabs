@@ -220,15 +220,35 @@ export default function OpportunitiesPage() {
 
       if (data.success) {
         const allRecommendations = data.data.recommendations || [];
-        const userAssetSymbols = userAssets.map(a => a.token.symbol);
 
-        const userAssetRecs = allRecommendations.filter((rec: any) =>
-          userAssetSymbols.includes(rec.asset?.symbol)
-        );
+        // Create a map of asset symbols to their balances (only if balance > 0.01)
+        const userAssetsWithBalance = new Map<string, number>();
+        userAssets.forEach(asset => {
+          const balance = asset.balanceFormatted || 0;
+          const symbol = asset.token.symbol.trim().toUpperCase();
+          if (balance > 0.01) {
+            userAssetsWithBalance.set(symbol, balance);
+          }
+        });
 
-        const suggestedAssetRecs = allRecommendations.filter((rec: any) =>
-          USD_STABLECOINS.includes(rec.asset?.symbol) && !userAssetSymbols.includes(rec.asset?.symbol)
-        );
+        console.log('🔍 User assets with balance > 0.01:', Array.from(userAssetsWithBalance.entries()));
+        console.log('🔍 All recommendations:', allRecommendations.map((r: any) => ({
+          symbol: r.asset?.symbol,
+          normalizedSymbol: r.asset?.symbol?.trim().toUpperCase(),
+        })));
+
+        // "Your Assets" = user has balance > 0.01 of the underlying asset
+        const userAssetRecs = allRecommendations.filter((rec: any) => {
+          const recSymbol = rec.asset?.symbol?.trim().toUpperCase();
+          return recSymbol && userAssetsWithBalance.has(recSymbol);
+        });
+
+        // "Suggested Assets" = USD stablecoins that user doesn't have (or balance <= 0.01)
+        const suggestedAssetRecs = allRecommendations.filter((rec: any) => {
+          const recSymbol = rec.asset?.symbol?.trim().toUpperCase();
+          const normalizedStablecoins = USD_STABLECOINS.map(s => s.trim().toUpperCase());
+          return recSymbol && normalizedStablecoins.includes(recSymbol) && !userAssetsWithBalance.has(recSymbol);
+        });
 
         setResult({
           ...data.data,
