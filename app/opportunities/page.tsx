@@ -5,11 +5,16 @@ import { useAccount } from 'wagmi';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { EnhancedStrategyCard } from '@/components/strategy/EnhancedStrategyCard';
 import { NetworkBadge } from '@/components/ui/NetworkBadge';
+import { StatCard } from '@/components/ui/StatCard';
 import { Accordion, AccordionItem } from '@/components/ui/accordion';
+import { PoolCard } from '@/components/scanner/PoolCard';
+import { usePendlePools } from '@/lib/hooks/usePendlePools';
 import { Zap, TrendingUp, SlidersHorizontal } from 'lucide-react';
 import tokenAddresses from '@/lib/constants/token_address.json';
+import type { PendlePool } from '@/types';
 
 // USD Stablecoin symbols - filter from token_address.json (exclude sKAITO)
 const USD_STABLECOINS = tokenAddresses
@@ -39,12 +44,19 @@ export default function OpportunitiesPage() {
   const [purchasedPositions, setPurchasedPositions] = useState<PurchasedPosition[]>([]);
   const [ratioAdjustments, setRatioAdjustments] = useState<Record<string, { pt: number; yt: number }>>({});
 
-  // Filter states
+  // Filter states for recommendations
   const [showFilters, setShowFilters] = useState(false);
   const [minAPY, setMinAPY] = useState<number>(0);
   const [maxAPY, setMaxAPY] = useState<number>(100);
   const [maxMaturityDays, setMaxMaturityDays] = useState<number>(365);
   const [selectedRiskLevels, setSelectedRiskLevels] = useState<string[]>(['conservative', 'moderate', 'aggressive']);
+
+  // Scanner states
+  const { pools, isLoading: poolsLoading, error: poolsError, refreshPools } = usePendlePools(activeTab === 'scanner');
+  const [sortBy, setSortBy] = useState<'apy-high' | 'apy-low' | 'tvl-high' | 'tvl-low' | 'maturity-soon' | 'maturity-far'>('apy-high');
+  const [filterTag, setFilterTag] = useState<'all' | 'Best PT' | 'Best YT' | 'Risky' | 'Neutral'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPool, setSelectedPool] = useState<PendlePool | null>(null);
 
   const loadRecommendations = async () => {
     setIsLoading(true);
@@ -281,6 +293,56 @@ export default function OpportunitiesPage() {
     };
   }, [result, minAPY, maxAPY, maxMaturityDays, selectedRiskLevels]);
 
+  // Scanner filter and sort logic
+  const filteredPools = useMemo(() => {
+    let filtered = [...pools];
+
+    // Apply tag filter
+    if (filterTag !== 'all') {
+      filtered = filtered.filter(pool => pool.strategyTag === filterTag);
+    }
+
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(pool =>
+        pool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.underlyingAsset.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'apy-high':
+          return b.apy - a.apy;
+        case 'apy-low':
+          return a.apy - b.apy;
+        case 'tvl-high':
+          return b.tvl - a.tvl;
+        case 'tvl-low':
+          return a.tvl - b.tvl;
+        case 'maturity-soon':
+          return a.daysToMaturity - b.daysToMaturity;
+        case 'maturity-far':
+          return b.daysToMaturity - a.daysToMaturity;
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  }, [pools, sortBy, filterTag, searchQuery]);
+
+  const stats = useMemo(() => {
+    if (pools.length === 0) return { totalTVL: 0, avgAPY: 0, highestAPY: 0 };
+
+    const totalTVL = pools.reduce((sum, pool) => sum + pool.tvl, 0);
+    const avgAPY = pools.reduce((sum, pool) => sum + pool.apy, 0) / pools.length;
+    const highestAPY = Math.max(...pools.map(pool => pool.apy));
+
+    return { totalTVL, avgAPY, highestAPY };
+  }, [pools]);
+
   // Auto-load recommendations on mount if wallet connected
   React.useEffect(() => {
     if (isConnected && activeTab === 'recommendations' && !result) {
@@ -332,9 +394,11 @@ export default function OpportunitiesPage() {
               <div className="flex items-center justify-center gap-2">
                 <TrendingUp className="w-5 h-5" />
                 <span>Market Scanner</span>
-                <span className="ml-2 px-2 py-0.5 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full">
-                  Coming Soon
-                </span>
+                {activeTab === 'scanner' && pools.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs rounded-full">
+                    {pools.length}
+                  </span>
+                )}
               </div>
             </button>
           </div>
@@ -524,14 +588,122 @@ export default function OpportunitiesPage() {
         )}
 
         {activeTab === 'scanner' && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center shadow-md">
-            <TrendingUp className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-              Market Scanner Coming Soon
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400">
-              Browse and filter all available Pendle pools across chains
-            </p>
+          <div>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <StatCard
+                title="Total TVL"
+                value={stats.totalTVL}
+                subtitle={`Across ${pools.length} pools`}
+                gradient="blue"
+              />
+              <StatCard
+                title="Highest APY"
+                value={`${stats.highestAPY.toFixed(2)}%`}
+                subtitle="Best opportunity"
+                gradient="green"
+              />
+              <StatCard
+                title="Average APY"
+                value={`${stats.avgAPY.toFixed(2)}%`}
+                subtitle="Across all pools"
+                gradient="purple"
+              />
+            </div>
+
+            {/* Filters and Search */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 mb-6 shadow-md">
+              <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                {/* Search */}
+                <div className="flex-1 max-w-md">
+                  <input
+                    type="text"
+                    placeholder="Search pools..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Filter Tags */}
+                <div className="flex flex-wrap gap-2">
+                  {(['all', 'Best PT', 'Best YT', 'Risky', 'Neutral'] as const).map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => setFilterTag(tag)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        filterTag === tag
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {tag === 'all' ? 'All Pools' : tag}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sort */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="apy-high">APY: High to Low</option>
+                  <option value="apy-low">APY: Low to High</option>
+                  <option value="tvl-high">TVL: High to Low</option>
+                  <option value="tvl-low">TVL: Low to High</option>
+                  <option value="maturity-soon">Maturity: Soonest</option>
+                  <option value="maturity-far">Maturity: Furthest</option>
+                </select>
+
+                {/* Refresh */}
+                <button
+                  onClick={refreshPools}
+                  disabled={poolsLoading}
+                  className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors disabled:opacity-50"
+                  title="Refresh pools"
+                >
+                  🔄
+                </button>
+              </div>
+            </div>
+
+            {/* Results Count */}
+            <div className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+              Showing {filteredPools.length} of {pools.length} pools
+            </div>
+
+            {/* Loading State */}
+            {poolsLoading && <LoadingState message="Loading pools..." />}
+
+            {/* Error State */}
+            {poolsError && (
+              <ErrorState
+                title="Failed to Load Pools"
+                message={poolsError}
+              />
+            )}
+
+            {/* Pools Grid */}
+            {!poolsLoading && !poolsError && filteredPools.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredPools.map((pool) => (
+                  <PoolCard
+                    key={pool.address}
+                    pool={pool}
+                    onSelect={setSelectedPool}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* No Results */}
+            {!poolsLoading && !poolsError && filteredPools.length === 0 && pools.length > 0 && (
+              <EmptyState
+                title="No pools found"
+                message="No pools match your current filters. Try adjusting your search criteria."
+              />
+            )}
           </div>
         )}
       </div>

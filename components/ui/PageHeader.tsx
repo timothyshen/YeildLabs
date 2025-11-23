@@ -54,12 +54,6 @@ export function PageHeader({
               Portfolio
             </Link>
             <Link
-              href="/scanner"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-            >
-              Scanner
-            </Link>
-            <Link
               href="/opportunities"
               className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors"
             >

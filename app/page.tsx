@@ -56,13 +56,7 @@ export default function Home() {
           <a href="/opportunities">
             <FeatureCard
               title="Opportunities"
-              description="Get AI-powered recommendations and discover yield opportunities"
-            />
-          </a>
-          <a href="/scanner">
-            <FeatureCard
-              title="Yield Scanner"
-              description="Find the best PT/YT opportunities across all stablecoin pools"
+              description="AI recommendations and market scanner in one place"
             />
           </a>
           <a href="/strategy">
