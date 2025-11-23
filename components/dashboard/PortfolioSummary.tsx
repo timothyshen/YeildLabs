@@ -23,7 +23,7 @@ export function PortfolioSummary({ portfolio }: PortfolioSummaryProps) {
   const dailyExpense = parseFloat(portfolio.dailyExpense || '0');
   const dailyPnL = dailyIncome - dailyExpense;
   const openPnL = portfolio.openPnl !== 'N/A' ? parseFloat(portfolio.openPnl || '0') : 0;
-  const closedPnL = portfolio.closedPnL !== 'N/A' ? parseFloat(portfolio.closedPnL || '0') : 0;
+  const closedPnL = portfolio.closedPnl !== 'N/A' ? parseFloat(portfolio.closedPnl || '0') : 0;
   const feesFiat = parseFloat(portfolio.feesFiat || '0');
 
   return (

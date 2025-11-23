@@ -241,7 +241,7 @@ export async function fetchAssetsByChain(chainId: number = 8453) {
     });
     
     // API might return array directly or wrapped in an object
-    const assets = Array.isArray(response) ? response : (response?.assets || response?.data || []);
+    const assets = Array.isArray(response) ? response : ((response as any)?.assets || (response as any)?.data || []);
     
     console.log(`✅ Fetched ${assets.length} assets for chain ${chainId}`);
     return assets;

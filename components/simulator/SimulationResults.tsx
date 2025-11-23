@@ -66,7 +66,7 @@ export function SimulationResults({ input, output }: SimulationResultsProps) {
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
           <h4 className="text-sm text-gray-600 dark:text-gray-400 mb-2">Annualized Yield</h4>
           <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-            {output.apy.toFixed(2)}%
+            {output.annualizedReturn.toFixed(2)}%
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
             Expected annual return rate

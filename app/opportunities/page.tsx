@@ -697,7 +697,7 @@ export default function OpportunitiesPage() {
             {!poolsLoading && !poolsError && filteredPools.length === 0 && pools.length > 0 && (
               <EmptyState
                 title="No pools found"
-                message="No pools match your current filters. Try adjusting your search criteria."
+                description="No pools match your current filters. Try adjusting your search criteria."
               />
             )}
           </div>

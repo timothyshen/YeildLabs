@@ -5,7 +5,7 @@ import {
   checkAllowance,
   toWei,
 } from '@/lib/1inch/client';
-import { is1inchConfigured, BASE_CHAIN_ID } from '@/lib/1inch/config';
+import { is1inchConfigured, BASE_CHAIN_ID, type ChainId } from '@/lib/1inch/config';
 import type { ApiResponse } from '@/types';
 
 /**
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const tokenAddress = searchParams.get('tokenAddress');
     const walletAddress = searchParams.get('walletAddress');
-    const chainId = parseInt(searchParams.get('chainId') || String(BASE_CHAIN_ID));
+    const chainId = parseInt(searchParams.get('chainId') || String(BASE_CHAIN_ID)) as ChainId;
 
     if (!tokenAddress || !walletAddress) {
       return NextResponse.json<ApiResponse<null>>({

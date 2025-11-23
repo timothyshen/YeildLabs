@@ -21,16 +21,16 @@ export function EnhancedPositionCard({ position, onManage }: EnhancedPositionCar
 
   // Handle both old and new API response formats
   const poolName = (position as any).pool?.name || position.pool;
-  const ptBalance = parseFloat((position as any).ptBalanceFormatted || position.ptBalance || 0);
-  const ytBalance = parseFloat((position as any).ytBalanceFormatted || position.ytBalance || 0);
-  const currentValue = parseFloat(position.currentValue || 0);
-  const unrealizedPnL = parseFloat(position.unrealizedPnL || 0);
-  const realizedPnL = parseFloat(position.realizedPnL || 0);
-  const costBasis = parseFloat((position as any).entryValue || position.costBasis || currentValue);
-  const poolApy = parseFloat((position as any).pool?.apy || 0);
+  const ptBalance = Number((position as any).ptBalanceFormatted || position.ptBalance || 0);
+  const ytBalance = Number((position as any).ytBalanceFormatted || position.ytBalance || 0);
+  const currentValue = Number(position.currentValue || 0);
+  const unrealizedPnL = Number(position.unrealizedPnL || 0);
+  const realizedPnL = Number(position.realizedPnL || 0);
+  const costBasis = Number((position as any).entryValue || position.costBasis || currentValue);
+  const poolApy = Number((position as any).pool?.apy || 0);
   const poolMaturity = (position as any).pool?.maturity;
-  const ptValue = parseFloat((position as any).ptValue || 0);
-  const ytValue = parseFloat((position as any).ytValue || 0);
+  const ptValue = Number((position as any).ptValue || 0);
+  const ytValue = Number((position as any).ytValue || 0);
 
   const totalPnL = realizedPnL + unrealizedPnL;
   const pnlPercent = costBasis !== 0 ? (totalPnL / costBasis) * 100 : 0;

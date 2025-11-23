@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { ApiResponse, SwapQuote } from '@/types';
+import type { ApiResponse } from '@/types';
+import type { SwapQuote, Token } from '@/types/unified';
 
 /**
  * 1inch Swap Quote API
@@ -31,14 +32,39 @@ export async function GET(request: NextRequest) {
     //   }
     // );
 
+    // Create mock Token objects
+    const fromTokenObj: Token = {
+      address: fromToken,
+      symbol: 'FROM',
+      name: 'From Token',
+      decimals: 18,
+      chainId: 8453,
+    };
+
+    const toTokenObj: Token = {
+      address: toToken,
+      symbol: 'TO',
+      name: 'To Token',
+      decimals: 18,
+      chainId: 8453,
+    };
+
+    const amountNum = parseFloat(amount);
+    const toAmountNum = amountNum * 0.99; // Mock 1% slippage
+
     const mockQuote: SwapQuote = {
-      fromToken,
-      toToken,
+      fromToken: fromTokenObj,
+      toToken: toTokenObj,
       fromAmount: amount,
-      toAmount: (parseFloat(amount) * 0.99).toString(), // Mock 1% slippage
+      toAmount: toAmountNum.toString(),
+      fromAmountFormatted: amountNum,
+      toAmountFormatted: toAmountNum,
       priceImpact: 0.5,
-      gas: '150000',
-      route: [fromToken, toToken],
+      effectivePrice: toAmountNum / amountNum,
+      gasEstimate: '150000',
+      gasEstimateUSD: 0.5,
+      route: [fromTokenObj, toTokenObj],
+      provider: '1inch',
     };
 
     return NextResponse.json<ApiResponse<SwapQuote>>({

@@ -54,17 +54,17 @@ export async function getTokenBalance(
       }).catch(() => 18), // Default to 18 if decimals call fails
     ]);
 
-    const formatted = Number(balance) / Math.pow(10, decimals);
+    const formatted = Number(balance) / Math.pow(10, Number(decimals));
 
     return {
-      raw: balance,
+      raw: balance as bigint,
       formatted,
-      decimals,
+      decimals: Number(decimals),
     };
   } catch (error) {
     console.error(`Error fetching balance for ${tokenAddress}:`, error);
     return {
-      raw: 0n,
+      raw: BigInt(0),
       formatted: 0,
       decimals: 18,
     };
@@ -103,6 +103,6 @@ export async function hasBalance(
   tokenAddress: string
 ): Promise<boolean> {
   const balance = await getTokenBalance(userAddress, tokenAddress);
-  return balance.raw > 0n;
+  return balance.raw > BigInt(0);
 }
 

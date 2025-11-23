@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSwapQuote, fromWei, toWei } from '@/lib/1inch/client';
-import { is1inchConfigured, BASE_CHAIN_ID } from '@/lib/1inch/config';
+import { is1inchConfigured, BASE_CHAIN_ID, type ChainId } from '@/lib/1inch/config';
 import type { ApiResponse } from '@/types';
 import type { SwapQuote } from '@/lib/1inch/types';
 
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const slippage = searchParams.get('slippage') || '1';
     const fromDecimals = parseInt(searchParams.get('fromDecimals') || '18');
     const toDecimals = parseInt(searchParams.get('toDecimals') || '18');
-    const chainId = parseInt(searchParams.get('chainId') || String(BASE_CHAIN_ID));
+    const chainId = parseInt(searchParams.get('chainId') || String(BASE_CHAIN_ID)) as ChainId;
 
     // Validate required parameters
     if (!fromToken || !toToken || !amount) {

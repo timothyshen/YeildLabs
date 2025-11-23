@@ -84,7 +84,7 @@ export function ExitToUSDC({ positions, onExit }: ExitToUSDCProps) {
           {/* Position Selection */}
           <div className="space-y-2 mb-6">
             {positions.map((position) => {
-              const poolId = position.poolAddress || (position.pool as any)?.address || position.pool;
+              const poolId = (position as any).poolAddress || (position.pool as any)?.address || position.pool;
               const poolName = (position.pool as any)?.name || position.pool;
               return (
               <label
@@ -103,7 +103,7 @@ export function ExitToUSDC({ positions, onExit }: ExitToUSDCProps) {
                       {poolName}
                     </p>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      PT: {parseFloat(position.ptBalance || 0).toFixed(2)} | YT: {parseFloat(position.ytBalance || 0).toFixed(2)}
+                      PT: {Number(position.ptBalance || 0).toFixed(2)} | YT: {Number(position.ytBalance || 0).toFixed(2)}
                     </p>
                   </div>
                 </div>

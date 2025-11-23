@@ -135,8 +135,8 @@ export function recommendPoolsForAsset(
   }
 
   // Extract asset info (handle both unified and legacy formats)
-  const assetSymbol = asset.token?.symbol || (asset as any).symbol || 'UNKNOWN';
-  const assetBalance = asset.balanceFormatted || parseFloat(asset.balance || '0') || (asset as any).balance || 0;
+  const assetSymbol = (asset.token as any)?.symbol || (asset as any).symbol || 'UNKNOWN';
+  const assetBalance = (asset as any).balanceFormatted || parseFloat(String(asset.balance || '0')) || (asset as any).balance || 0;
   const assetValue = asset.valueUSD || 0;
 
   return {
@@ -175,7 +175,7 @@ export function getRecommendationsForPortfolio(
 
   userAssets.forEach((asset) => {
     // Handle both legacy and unified WalletAsset structure
-    const assetSymbol = (asset.token?.symbol || (asset as any).symbol || '').toUpperCase();
+    const assetSymbol = ((asset.token as any)?.symbol || (asset as any).symbol || '').toUpperCase();
     const matchingPools = matches.get(assetSymbol) || [];
 
     if (matchingPools.length > 0) {

@@ -24,7 +24,9 @@ export function useTokenBalance({
   // For native token (ETH), use useBalance
   const { data: nativeBalance, isLoading: isLoadingNative } = useBalance({
     address: userAddress as Address,
-    enabled: enabled && isNativeToken && !!userAddress,
+    query: {
+      enabled: enabled && isNativeToken && !!userAddress,
+    },
   });
 
   // For ERC20 tokens, use useReadContract
@@ -33,7 +35,9 @@ export function useTokenBalance({
     abi: erc20Abi,
     functionName: 'balanceOf',
     args: userAddress ? [userAddress as Address] : undefined,
-    enabled: enabled && !isNativeToken && !!tokenAddress && !!userAddress,
+    query: {
+      enabled: enabled && !isNativeToken && !!tokenAddress && !!userAddress,
+    },
   });
 
   // Get decimals for ERC20 tokens
@@ -41,20 +45,25 @@ export function useTokenBalance({
     address: tokenAddress as Address,
     abi: erc20Abi,
     functionName: 'decimals',
-    enabled: enabled && !isNativeToken && !!tokenAddress,
+    query: {
+      enabled: enabled && !isNativeToken && !!tokenAddress,
+    },
   });
 
   const balance = useMemo(() => {
     if (isNativeToken) {
+      const rawValue = nativeBalance?.value || BigInt(0);
+      const decimalsValue = nativeBalance?.decimals || 18;
+      const formattedValue = Number(rawValue) / Math.pow(10, decimalsValue);
       return {
-        raw: nativeBalance?.value || 0n,
-        formatted: parseFloat(nativeBalance?.formatted || '0'),
-        decimals: 18,
+        raw: rawValue,
+        formatted: formattedValue,
+        decimals: decimalsValue,
         isLoading: isLoadingNative,
       };
     }
 
-    const rawBalance = (tokenBalance as bigint) || 0n;
+    const rawBalance = (tokenBalance as bigint) || BigInt(0);
     const tokenDecimals = decimals || 18;
     const formatted = Number(rawBalance) / Math.pow(10, tokenDecimals);
 

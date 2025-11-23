@@ -67,7 +67,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   // Get token symbol from pool
   const tokenSymbol = typeof pool.underlyingAsset === 'string'
     ? pool.underlyingAsset
-    : pool.underlyingAsset?.symbol;
+    : (pool.underlyingAsset as any)?.symbol;
 
   // Helper to check if a string is an address or a symbol
   const isAddress = (str: string | undefined): boolean => {
@@ -88,7 +88,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   // 3. Pool's underlying asset address (if it's actually an address)
   const poolTokenAddress = typeof pool.underlyingAsset === 'string'
     ? pool.underlyingAsset
-    : pool.underlyingAsset?.address;
+    : (pool.underlyingAsset as any)?.address;
 
   // Check if poolTokenAddress is actually an address or just a symbol
   const poolTokenAddressIsValid = poolTokenAddress && isAddress(poolTokenAddress);
@@ -97,7 +97,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   const shouldFetchFromConstants = !providedTokenAddress && !poolTokenAddressIsValid && !!tokenSymbol;
   const { address: tokenAddressFromConstants, isLoading: isLoadingTokenAddress } = useTokenAddress({
     symbol: tokenSymbol,
-    chainId: pool.chainId || 8453,
+    chainId: (pool as any).chainId || 8453,
     enabled: shouldFetchFromConstants,
   });
 
@@ -154,9 +154,9 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   });
 
   // Get PT, YT, and SY token addresses
-  const ptTokenAddress = typeof pool.ptToken === 'string' ? pool.ptToken : pool.ptToken?.address;
-  const ytTokenAddress = typeof pool.ytToken === 'string' ? pool.ytToken : pool.ytToken?.address;
-  const syTokenAddress = typeof pool.syToken === 'string' ? pool.syToken : pool.syToken?.address;
+  const ptTokenAddress = typeof (pool as any).ptToken === 'string' ? (pool as any).ptToken : (pool as any).ptToken?.address;
+  const ytTokenAddress = typeof (pool as any).ytToken === 'string' ? (pool as any).ytToken : (pool as any).ytToken?.address;
+  const syTokenAddress = typeof (pool as any).syToken === 'string' ? (pool as any).syToken : (pool as any).syToken?.address;
 
   // Normalize addresses (remove chainId prefix)
   const normalizePtAddress = ptTokenAddress && ptTokenAddress.includes('-') ? ptTokenAddress.split('-').pop() : ptTokenAddress;
@@ -275,7 +275,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         fromDecimals: usdcDecimals,
         toDecimals: underlyingDecimals,
         slippage: 1,
-        chainId: pool.chainId || 8453,
+        chainId: (pool as any).chainId || 8453,
       });
 
       if (quote) {
@@ -313,7 +313,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         amount: investmentAmount,
         fromDecimals: 6,
         slippage: 1,
-        chainId: pool.chainId || 8453,
+        chainId: (pool as any).chainId || 8453,
       });
 
       if (!swapTxData) {
@@ -383,14 +383,14 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       // Helper to check if a string is an address or a symbol
       const isAddress = (str: string): boolean => {
         if (!str) return false;
-        return /^0x[a-fA-F0-9]{40}$/.test(str) || (str.includes('-') && str.split('-').pop()?.match(/^0x[a-fA-F0-9]{40}$/));
+        return /^0x[a-fA-F0-9]{40}$/.test(str) || (str.includes('-') && !!str.split('-').pop()?.match(/^0x[a-fA-F0-9]{40}$/));
       };
       
       if (!underlyingToken || !isAddress(underlyingToken)) {
         // Try to get from pool
         const poolUnderlyingAsset = typeof pool.underlyingAsset === 'string'
           ? pool.underlyingAsset
-          : pool.underlyingAsset?.address;
+          : (pool.underlyingAsset as any)?.address;
         
         console.log('🔍 [DEBUG] Getting underlying token address:', {
           providedTokenAddress,
@@ -407,12 +407,12 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           const symbolToLookup = poolUnderlyingAsset || tokenSymbol;
           if (symbolToLookup) {
             const { getTokenAddressBySymbol } = await import('@/lib/utils/tokenAddress');
-            const lookedUpAddress = getTokenAddressBySymbol(symbolToLookup, pool.chainId || 8453);
+            const lookedUpAddress = getTokenAddressBySymbol(symbolToLookup, (pool as any).chainId || 8453);
             
             console.log('🔍 [DEBUG] Looked up token address by symbol:', {
               symbol: symbolToLookup,
               foundAddress: lookedUpAddress,
-              chainId: pool.chainId || 8453,
+              chainId: (pool as any).chainId || 8453,
               symbolLength: symbolToLookup.length,
             });
             
@@ -441,7 +441,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           underlyingToken,
           tokenSymbol,
           providedTokenAddress,
-          poolUnderlyingAsset: typeof pool.underlyingAsset === 'string' ? pool.underlyingAsset : pool.underlyingAsset?.address,
+          poolUnderlyingAsset: typeof pool.underlyingAsset === 'string' ? pool.underlyingAsset : (pool.underlyingAsset as any)?.address,
           tokenAddressFromConstants,
           isSymbol: underlyingToken && !isAddress(underlyingToken),
         });
@@ -456,13 +456,13 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       console.log('✅ [DEBUG] Using underlying token address:', underlyingToken);
 
       // Get PT and YT token addresses
-      let ptToken = typeof pool.ptToken === 'string'
-        ? pool.ptToken
-        : pool.ptToken?.address;
-      
-      let ytToken = typeof pool.ytToken === 'string'
-        ? pool.ytToken
-        : pool.ytToken?.address;
+      let ptToken = typeof (pool as any).ptToken === 'string'
+        ? (pool as any).ptToken
+        : (pool as any).ptToken?.address;
+
+      let ytToken = typeof (pool as any).ytToken === 'string'
+        ? (pool as any).ytToken
+        : (pool as any).ytToken?.address;
       
       // Normalize PT/YT addresses
       if (ptToken && ptToken.includes('-')) {
@@ -516,7 +516,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       const totalAmountWei = parseEther(investmentAmount).toString();
       
       await executeMintPy({
-        chainId: pool.chainId || 8453,
+        chainId: (pool as any).chainId || 8453,
         tokenIn: underlyingToken,
         amountIn: totalAmountWei,
         ptToken,
@@ -604,7 +604,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         });
 
         await executeRedeemPy({
-          chainId: pool.chainId || 8453,
+          chainId: (pool as any).chainId || 8453,
           ptToken,
           ytToken,
           ptAmount: redeemAmountWei,
@@ -642,7 +642,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         });
 
         await executeRedeemSy({
-          chainId: pool.chainId || 8453,
+          chainId: (pool as any).chainId || 8453,
           syToken,
           syAmount: redeemAmountWei,
           tokenOut: underlyingTokenAddress,

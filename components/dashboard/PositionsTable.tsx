@@ -67,7 +67,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {positions.map((position, index) => {
-              const poolId = position.poolAddress || (position.pool as any)?.address || `pool-${index}`;
+              const poolId = (position as any).poolAddress || (position.pool as any)?.address || `pool-${index}`;
               const poolName = (position.pool as any)?.name || position.pool;
               return (
               <tr
@@ -92,7 +92,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
                 <td className="px-6 py-4 whitespace-nowrap text-right">
                   {position.ptBalance > 0 ? (
                     <span className="text-sm font-mono text-gray-900 dark:text-white">
-                      {parseFloat(position.ptBalance || 0).toFixed(2)}
+                      {Number(position.ptBalance || 0).toFixed(2)}
                     </span>
                   ) : (
                     <span className="text-sm text-gray-400">-</span>
@@ -101,7 +101,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
                 <td className="px-6 py-4 whitespace-nowrap text-right">
                   {position.ytBalance > 0 ? (
                     <span className="text-sm font-mono text-gray-900 dark:text-white">
-                      {parseFloat(position.ytBalance || 0).toFixed(2)}
+                      {Number(position.ytBalance || 0).toFixed(2)}
                     </span>
                   ) : (
                     <span className="text-sm text-gray-400">-</span>

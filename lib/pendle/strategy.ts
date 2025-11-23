@@ -38,25 +38,27 @@ export interface YieldData {
       return {
         ptPercentage: 1,
         ytPercentage: 0,
-        comment: "No valid YT signal; allocate fully to PT"
+        comment: "No valid YT signal; allocate fully to PT",
+        riskFactor: 0
       };
     }
-  
+
     // -------- 3. Final Ratio --------
     const ptPercentage = PT_score / (PT_score + YT_score);
     const ytPercentage = YT_score / (PT_score + YT_score);
-  
+
     // -------- 4. Strategy Comment --------
     let comment = "";
     if (ytPercentage > 0.7) comment = "Strong YT signal (APY trending up)";
     else if (ytPercentage > 0.4) comment = "Moderate YT allocation";
     else if (ytPercentage < 0.1) comment = "Market weak; focus PT";
     else comment = "Balanced PT/YT positioning";
-  
+
     return {
       ptPercentage,
       ytPercentage,
-      comment
+      comment,
+      riskFactor: 0
     };
   }
 

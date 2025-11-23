@@ -37,8 +37,12 @@ export function simulatePT(input: SimulatorInput): SimulatorOutput {
 
   return {
     futureValue: maturityValue,
-    apy,
+    totalYield: maturityValue - amount,
+    annualizedReturn: apy,
     risks,
+    riskScore: 20, // PT is low risk
+    vsHolding: (maturityValue - amount) / amount * 100,
+    vsCurrentAPY: 0,
   };
 }
 
@@ -84,9 +88,13 @@ export function simulateYT(input: SimulatorInput): SimulatorOutput {
 
   return {
     futureValue,
-    apy,
+    totalYield: futureValue - amount,
+    annualizedReturn: apy,
     risks,
+    riskScore: 75, // YT is high risk
     sensitivityCurve,
+    vsHolding: (futureValue - amount) / amount * 100,
+    vsCurrentAPY: 0,
   };
 }
 

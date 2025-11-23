@@ -400,7 +400,7 @@ export default function PortfolioPage() {
             {!isLoading && !error && filteredPositions.length === 0 && (
               <EmptyState
                 title="No positions found"
-                message="You don't have any active Pendle positions matching your filters"
+                description="You don't have any active Pendle positions matching your filters"
               />
             )}
 
@@ -419,7 +419,6 @@ export default function PortfolioPage() {
                 ) : (
                   <PositionsTable
                     positions={filteredPositions}
-                    onManage={handleManagePosition}
                   />
                 )}
 
@@ -436,9 +435,9 @@ export default function PortfolioPage() {
             )}
 
             {/* Performance Tracking */}
-            {!isLoading && positions.length > 0 && (
+            {!isLoading && positions.length > 0 && connectedAddress && (
               <div className="mt-8">
-                <PerformanceTracking positions={positions} />
+                <PerformanceTracking address={connectedAddress} currentValue={metrics.totalValue} />
               </div>
             )}
           </>

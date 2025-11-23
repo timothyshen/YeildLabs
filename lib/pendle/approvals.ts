@@ -76,7 +76,7 @@ export async function checkApproval(
       spender,
       amount,
       needsApproval: true,
-      currentAllowance: 0n,
+      currentAllowance: BigInt(0),
     };
   }
 }
@@ -104,7 +104,7 @@ export function getApprovalTransaction(
   return {
     to: tokenAddress,
     data,
-    value: 0n,
+    value: BigInt(0),
   };
 }
 

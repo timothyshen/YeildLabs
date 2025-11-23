@@ -3,7 +3,7 @@
  * Utility functions for interacting with 1inch API
  */
 
-import { get1inchApiUrl, get1inchHeaders, BASE_CHAIN_ID } from './config';
+import { get1inchApiUrl, get1inchHeaders, BASE_CHAIN_ID, type ChainId } from './config';
 import type {
   QuoteParams,
   QuoteResponse,
@@ -22,7 +22,7 @@ import type {
 async function makeRequest<T>(
   endpoint: string,
   params: Record<string, any> = {},
-  chainId: number = BASE_CHAIN_ID
+  chainId: ChainId = BASE_CHAIN_ID
 ): Promise<T> {
   const baseUrl = get1inchApiUrl(chainId);
   const url = new URL(`${baseUrl}${endpoint}`);
@@ -66,7 +66,7 @@ async function makeRequest<T>(
  */
 export async function getSwapQuote(
   params: QuoteParams,
-  chainId: number = BASE_CHAIN_ID
+  chainId: ChainId = BASE_CHAIN_ID
 ): Promise<QuoteResponse> {
   return makeRequest<QuoteResponse>('/quote', params, chainId);
 }
@@ -76,7 +76,7 @@ export async function getSwapQuote(
  */
 export async function getSwapTransaction(
   params: SwapParams,
-  chainId: number = BASE_CHAIN_ID
+  chainId: ChainId = BASE_CHAIN_ID
 ): Promise<SwapResponse> {
   return makeRequest<SwapResponse>('/swap', params, chainId);
 }
@@ -86,7 +86,7 @@ export async function getSwapTransaction(
  */
 export async function getApprovalTransaction(
   params: ApprovalParams,
-  chainId: number = BASE_CHAIN_ID
+  chainId: ChainId = BASE_CHAIN_ID
 ): Promise<ApprovalResponse> {
   return makeRequest<ApprovalResponse>('/approve/transaction', {
     tokenAddress: params.tokenAddress,
@@ -98,7 +98,7 @@ export async function getApprovalTransaction(
  * Get spender address (1inch router)
  */
 export async function getSpenderAddress(
-  chainId: number = BASE_CHAIN_ID
+  chainId: ChainId = BASE_CHAIN_ID
 ): Promise<{ address: string }> {
   return makeRequest<{ address: string }>('/approve/spender', {}, chainId);
 }
@@ -108,7 +108,7 @@ export async function getSpenderAddress(
  */
 export async function checkAllowance(
   params: AllowanceParams,
-  chainId: number = BASE_CHAIN_ID
+  chainId: ChainId = BASE_CHAIN_ID
 ): Promise<AllowanceResponse> {
   return makeRequest<AllowanceResponse>('/approve/allowance', {
     tokenAddress: params.tokenAddress,
@@ -120,7 +120,7 @@ export async function checkAllowance(
  * Get list of supported tokens
  */
 export async function getSupportedTokens(
-  chainId: number = BASE_CHAIN_ID
+  chainId: ChainId = BASE_CHAIN_ID
 ): Promise<Record<string, any>> {
   return makeRequest('/tokens', {}, chainId);
 }
@@ -129,7 +129,7 @@ export async function getSupportedTokens(
  * Get liquidity sources
  */
 export async function getLiquiditySources(
-  chainId: number = BASE_CHAIN_ID
+  chainId: ChainId = BASE_CHAIN_ID
 ): Promise<{ protocols: any[] }> {
   return makeRequest('/liquidity-sources', {}, chainId);
 }
