@@ -9,7 +9,7 @@ import { parseEther, parseUnits } from 'viem';
 import { usePendleMint } from '@/lib/hooks/usePendleMint';
 import { usePendleRedeem } from '@/lib/hooks/usePendleRedeem';
 import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
-import { useTokenBalance } from '@/lib/hooks/useTokenBalance';
+import { usePendleStrategyBalances } from '@/lib/hooks/useMultipleTokenBalances';
 import { useTokenAddress } from '@/lib/hooks/useTokenAddress';
 import { useToast } from '@/components/ui/Toast';
 import { TokenAddressIndicator } from '@/components/ui/TokenAddressIndicator';
@@ -268,51 +268,34 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     });
   }, [address, tokenSymbol, poolTokenAddress, underlyingTokenAddress, isValidTokenAddress, isLoadingTokenAddress]);
 
-  // Check user's balance for the underlying token
-  const userBalance = useTokenBalance({
-    tokenAddress: isValidTokenAddress ? underlyingTokenAddress : undefined,
-    userAddress: address,
-    enabled: !!address && !!isValidTokenAddress && !isLoadingTokenAddress,
-  });
-
-  // Check user's USDC balance for swap option
-  const usdcBalance = useTokenBalance({
-    tokenAddress: BASE_TOKENS.USDC,
-    userAddress: address,
-    enabled: !!address,
-  });
-
   // Get PT, YT, and SY token addresses
   // Try both the unified type (ptToken/ytToken/syToken as Token objects) and legacy type (ptAddress/ytAddress/syAddress as strings)
   const ptTokenAddress = (pool as any).ptAddress || (typeof (pool as any).ptToken === 'string' ? (pool as any).ptToken : (pool as any).ptToken?.address);
   const ytTokenAddress = (pool as any).ytAddress || (typeof (pool as any).ytToken === 'string' ? (pool as any).ytToken : (pool as any).ytToken?.address);
   const syTokenAddress = (pool as any).syAddress || (typeof (pool as any).syToken === 'string' ? (pool as any).syToken : (pool as any).syToken?.address);
 
-  // Normalize addresses (remove chainId prefix)
-  const normalizePtAddress = ptTokenAddress && ptTokenAddress.includes('-') ? ptTokenAddress.split('-').pop() : ptTokenAddress;
-  const normalizeYtAddress = ytTokenAddress && ytTokenAddress.includes('-') ? ytTokenAddress.split('-').pop() : ytTokenAddress;
-  const normalizeSyAddress = syTokenAddress && syTokenAddress.includes('-') ? syTokenAddress.split('-').pop() : syTokenAddress;
+  // Normalize addresses (remove chainId prefix) using our utility
+  const normalizePtAddress = normalizeAddress(ptTokenAddress || '');
+  const normalizeYtAddress = normalizeAddress(ytTokenAddress || '');
+  const normalizeSyAddress = normalizeAddress(syTokenAddress || '');
 
-  // Check PT balance
-  const ptBalance = useTokenBalance({
-    tokenAddress: normalizePtAddress,
+  // Batch fetch all token balances in a single multicall (5 RPC calls → 1 multicall!)
+  const { balances, isLoading: isLoadingBalances } = usePendleStrategyBalances({
+    underlyingAddress: isValidTokenAddress ? underlyingTokenAddress : undefined,
+    usdcAddress: BASE_TOKENS.USDC,
+    ptAddress: normalizePtAddress,
+    ytAddress: normalizeYtAddress,
+    syAddress: normalizeSyAddress,
     userAddress: address,
-    enabled: !!address && !!normalizePtAddress,
+    enabled: !!address,
   });
 
-  // Check YT balance
-  const ytBalance = useTokenBalance({
-    tokenAddress: normalizeYtAddress,
-    userAddress: address,
-    enabled: !!address && !!normalizeYtAddress,
-  });
-
-  // Check SY balance
-  const syBalance = useTokenBalance({
-    tokenAddress: normalizeSyAddress,
-    userAddress: address,
-    enabled: !!address && !!normalizeSyAddress,
-  });
+  // Extract individual balances from the batched result
+  const userBalance = balances.underlying || { formatted: 0, decimals: 18, isLoading: isLoadingBalances };
+  const usdcBalance = balances.usdc || { formatted: 0, decimals: 6, isLoading: isLoadingBalances };
+  const ptBalance = balances.pt || { formatted: 0, decimals: 18, isLoading: isLoadingBalances };
+  const ytBalance = balances.yt || { formatted: 0, decimals: 18, isLoading: isLoadingBalances };
+  const syBalance = balances.sy || { formatted: 0, decimals: 18, isLoading: isLoadingBalances };
 
   // Determine if user has redeemable tokens
   const hasRedeemableTokens = (ptBalance.formatted > 0 && ytBalance.formatted > 0) || syBalance.formatted > 0;
