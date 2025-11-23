@@ -164,19 +164,17 @@ export function usePendleMint() {
       const approvals = await checkApprovals(txData);
       const needsApproval = approvals.some((check) => check.needsApproval);
 
-      if (needsApproval && autoApprove && publicClient && address) {
-        // Handle approvals
-        for (const approval of approvals.filter((check) => check.needsApproval)) {
-          const approvalTx = getApprovalTransaction(approval.token, approval.spender, 'infinite');
-          sendTransaction({
-            to: approvalTx.to,
-            data: approvalTx.data,
-            value: approvalTx.value,
-          });
-        }
+      // Return approval info if needed - let the caller handle the sequencing
+      if (needsApproval) {
+        return {
+          priceImpact: txData.priceImpact,
+          needsApproval: true,
+          approvals: approvals.filter((check) => check.needsApproval),
+          mintTxData: txData, // Store for later execution after approval
+        };
       }
 
-      // Send mint transaction
+      // No approval needed - send mint transaction immediately
       // Safely parse value - handle both string and number formats
       const txValuePy = txData.tx.value || '0';
       const parsedValuePy = typeof txValuePy === 'object' && txValuePy !== null && 'toString' in txValuePy
@@ -208,9 +206,36 @@ export function usePendleMint() {
     }
   };
 
+  // Execute mint transaction with pre-fetched tx data (after approval)
+  const executeMintTx = async (mintTxData: any) => {
+    try {
+      const txValue = mintTxData.tx.value || '0';
+      const parsedValue = typeof txValue === 'object' && txValue !== null && 'toString' in txValue
+        ? BigInt((txValue as any).toString())
+        : BigInt(txValue);
+
+      console.log('🔍 [DEBUG] Executing mint transaction after approval:', {
+        to: mintTxData.tx.to,
+        value: txValue,
+        parsedValue: parsedValue.toString(),
+      });
+
+      sendTransaction({
+        to: mintTxData.tx.to as Address,
+        data: mintTxData.tx.data as `0x${string}`,
+        value: parsedValue,
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Unknown error');
+      setError(error);
+      throw error;
+    }
+  };
+
   return {
     executeMintSy,
     executeMintPy,
+    executeMintTx,
     getMintTransaction,
     checkApprovals,
     hash,
@@ -220,6 +245,7 @@ export function usePendleMint() {
     error: error || null,
     mintData,
     approvalChecks,
+    sendTransaction, // Export for approval transactions
   };
 }
 

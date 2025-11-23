@@ -1,93 +1,109 @@
-// pendleStrategy.ts
-// Production-Ready PT/YT Allocation Strategy
+/**
+ * Pendle PT/YT Allocation Strategy
+ *
+ * Production-ready strategy engine for calculating optimal PT/YT allocation
+ * based on market conditions, risk profile, and pool characteristics.
+ *
+ * @module lib/pendle/strategy
+ */
 
 export interface YieldData {
-    ptPrice: number;             // PT 当前价格 (0.92 等)
-    apy7d: number;               // 7-day APY (decimal)
-    apy30d: number;              // 30-day APY (decimal)
-    maturityDays: number;        // 距离到期天数
-    sensitivity: number;         // YT 对 APY 变化的敏感度 (delta)
+  ptPrice: number;             // PT current price (e.g., 0.92)
+  apy7d: number;               // 7-day APY (decimal, e.g., 0.15 for 15%)
+  apy30d: number;              // 30-day APY (decimal)
+  maturityDays: number;        // Days until maturity
+  sensitivity: number;         // YT sensitivity to APY changes (delta)
+}
+
+export interface StrategyResult {
+  ptPercentage: number; // 0 to 1 (0% to 100%)
+  ytPercentage: number; // 0 to 1 (0% to 100%)
+  comment: string;
+  riskFactor?: number;
+}
+  
+/**
+ * Calculate optimal PT/YT allocation based on market conditions
+ *
+ * @param data Market and pool data
+ * @returns Allocation strategy with PT/YT percentages and commentary
+ */
+export function calculatePTYTAllocation(data: YieldData): StrategyResult {
+  const { ptPrice, apy7d, apy30d, maturityDays, sensitivity } = data;
+
+  // -------- 1. PT Score --------
+  // Higher discount and longer maturity favor PT
+  const discount = 1 - ptPrice;
+  const PT_score =
+    discount * Math.sqrt(Math.max(maturityDays, 1) / 365);
+
+  // -------- 2. YT Score --------
+  // APY trend determines YT attractiveness
+  const apyTrend =
+    apy30d > 0 ? (apy7d - apy30d) / apy30d : 0;
+
+  let YT_score = apyTrend * sensitivity;
+
+  // Don't buy YT if APY is declining
+  if (YT_score < 0) {
+    YT_score = 0;
   }
-  
-  export interface StrategyResult {
-    ptPercentage: number; // 0 ~ 1
-    ytPercentage: number; // 0 ~ 1
-    comment: string;
-  }
-  
-  export function calculatePTYTAllocation(data: YieldData): StrategyResult {
-    const { ptPrice, apy7d, apy30d, maturityDays, sensitivity } = data;
-  
-    // -------- 1. PT Score --------
-    const discount = 1 - ptPrice;
-    const PT_score =
-      discount * Math.sqrt(Math.max(maturityDays, 1) / 365);
-  
-    // -------- 2. YT Score --------
-    const apyTrend =
-      apy30d > 0 ? (apy7d - apy30d) / apy30d : 0;
-  
-    let YT_score = apyTrend * sensitivity;
-  
-    if (YT_score < 0) {
-      YT_score = 0; // APY 下跌不买 YT
-    }
-  
-    // Avoid division by zero
-    if (PT_score + YT_score === 0) {
-      return {
-        ptPercentage: 1,
-        ytPercentage: 0,
-        comment: "No valid YT signal; allocate fully to PT",
-        riskFactor: 0
-      };
-    }
 
-    // -------- 3. Final Ratio --------
-    const ptPercentage = PT_score / (PT_score + YT_score);
-    const ytPercentage = YT_score / (PT_score + YT_score);
-
-    // -------- 4. Strategy Comment --------
-    let comment = "";
-    if (ytPercentage > 0.7) comment = "Strong YT signal (APY trending up)";
-    else if (ytPercentage > 0.4) comment = "Moderate YT allocation";
-    else if (ytPercentage < 0.1) comment = "Market weak; focus PT";
-    else comment = "Balanced PT/YT positioning";
-
+  // Avoid division by zero
+  if (PT_score + YT_score === 0) {
     return {
-      ptPercentage,
-      ytPercentage,
-      comment,
+      ptPercentage: 1,
+      ytPercentage: 0,
+      comment: "No valid YT signal; allocate fully to PT",
       riskFactor: 0
     };
   }
 
+  // -------- 3. Final Ratio --------
+  const ptPercentage = PT_score / (PT_score + YT_score);
+  const ytPercentage = YT_score / (PT_score + YT_score);
 
-  export interface RiskParams {
-    maxDrawdown: number;   // YT 过去30天最大回撤 (0.0 ~ 1.0)
-    volatility: number;    // APY 波动 (std of returns)
-    riskProfile: "conservative" | "moderate" | "aggressive";
-  }
-  
-  export interface YieldPoolData {
-    ptPrice: number;
-    apy7d: number;
-    apy30d: number;
-    maturityDays: number;
-    sensitivity: number;
-  }
-  
-  export interface StrategyResult {
-    ptPercentage: number;
-    ytPercentage: number;
-    comment: string;
-    riskFactor: number;
-  }
-  
-  export function calculatePTYTWithRisk(
-    data: YieldPoolData,
-    risk: RiskParams
-  ): StrategyResult {
+  // -------- 4. Strategy Comment --------
+  let comment = "";
+  if (ytPercentage > 0.7) comment = "Strong YT signal (APY trending up)";
+  else if (ytPercentage > 0.4) comment = "Moderate YT allocation";
+  else if (ytPercentage < 0.1) comment = "Market weak; focus PT";
+  else comment = "Balanced PT/YT positioning";
+
+  return {
+    ptPercentage,
+    ytPercentage,
+    comment,
+    riskFactor: 0
+  };
+}
+
+
+export interface RiskParams {
+  maxDrawdown: number;   // YT max drawdown in last 30 days (0.0 to 1.0)
+  volatility: number;    // APY volatility (std of returns)
+  riskProfile: "conservative" | "moderate" | "aggressive";
+}
+
+export interface YieldPoolData {
+  ptPrice: number;
+  apy7d: number;
+  apy30d: number;
+  maturityDays: number;
+  sensitivity: number;
+}
+
+/**
+ * Calculate PT/YT allocation with risk adjustment
+ *
+ * @param data Pool yield data
+ * @param risk Risk parameters and user profile
+ * @returns Risk-adjusted allocation strategy
+ */
+export function calculatePTYTWithRisk(
+  data: YieldPoolData,
+  risk: RiskParams
+): StrategyResult {
   
     const { ptPrice, apy7d, apy30d, maturityDays, sensitivity } = data;
     const { maxDrawdown, volatility, riskProfile } = risk;
@@ -193,7 +209,7 @@ export interface YieldData {
     const finalScore =
       30 * ptScore +
       25 * trendScore +
-      20 * riskFactor +
+      20 * (riskFactor ?? 0) +
       15 * maturityScore +
       10 * tvlScore;
   

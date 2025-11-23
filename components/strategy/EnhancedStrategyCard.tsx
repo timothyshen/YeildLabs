@@ -5,7 +5,7 @@ import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { ArrowRight, Zap, ArrowLeftRight } from 'lucide-react';
-import { parseEther } from 'viem';
+import { parseEther, parseUnits } from 'viem';
 import { usePendleMint } from '@/lib/hooks/usePendleMint';
 import { usePendleRedeem } from '@/lib/hooks/usePendleRedeem';
 import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
@@ -34,6 +34,50 @@ const safeLog = (message: string, data: any) => {
     // If serialization fails, just log the message
     console.log(message, '[Unable to serialize data]');
   }
+};
+
+// Get token decimals based on symbol or address
+const getTokenDecimals = async (symbolOrAddress: string, chainId: number = 8453): Promise<number> => {
+  if (!symbolOrAddress) return 18; // Default to 18 decimals
+
+  // Import the token utility
+  const { getTokenInfoBySymbol, getTokenInfoByAddress } = await import('@/lib/utils/tokenAddress');
+
+  // Check if it's an address (starts with 0x and has 40 hex chars after)
+  const isAddress = symbolOrAddress.startsWith('0x') && symbolOrAddress.length === 42;
+
+  // Try to get token info from our constants
+  let tokenInfo = null;
+
+  if (isAddress) {
+    // Look up by address first
+    tokenInfo = getTokenInfoByAddress(symbolOrAddress, chainId);
+  }
+
+  if (!tokenInfo) {
+    // Try looking up by symbol
+    tokenInfo = getTokenInfoBySymbol(symbolOrAddress, chainId);
+  }
+
+  if (tokenInfo) {
+    console.log('✅ Found token decimals:', {
+      input: symbolOrAddress,
+      symbol: tokenInfo.symbol,
+      decimals: tokenInfo.decimals
+    });
+    return tokenInfo.decimals;
+  }
+
+  // Fallback: USDC and USDT typically use 6 decimals
+  const normalized = symbolOrAddress.toUpperCase();
+  if (normalized.includes('USDC') || normalized.includes('USDT')) {
+    console.log('⚠️ Using fallback decimals for USDC/USDT: 6');
+    return 6;
+  }
+
+  // Default to 18 decimals for most ERC20 tokens
+  console.log('⚠️ Using default decimals: 18 for', symbolOrAddress);
+  return 18;
 };
 
 interface EnhancedStrategyCardProps {
@@ -68,9 +112,21 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   onSuccess,
 }) => {
   const { address } = useAccount();
-  const { executeMintPy, isLoading: isMintLoading, isSuccess: isMintSuccess, hash: mintHash, error: mintError } = usePendleMint();
+  const {
+    executeMintPy,
+    executeMintTx,
+    sendTransaction: sendMintApproval,
+    isLoading: isMintLoading,
+    isSuccess: isMintSuccess,
+    hash: mintHash,
+    error: mintError
+  } = usePendleMint();
   const { executeRedeemPy, executeRedeemSy, isLoading: isRedeemLoading, isSuccess: isRedeemSuccess, hash: redeemHash, error: redeemError } = usePendleRedeem();
   const { showToast, removeToast } = useToast();
+
+  // State for tracking mint approval flow
+  const [pendingMintTx, setPendingMintTx] = useState<any>(null);
+  const [isWaitingForMintApproval, setIsWaitingForMintApproval] = useState(false);
   const { quote: swapQuote, isLoading: isSwapLoading, error: swapError, getQuote, executeSwap, checkAllowance, getApprovalTransaction, reset: resetSwap } = use1inchSwap();
 
   const [activeTab, setActiveTab] = useState<'invest' | 'redeem'>('invest');
@@ -361,7 +417,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         toSymbol: tokenSymbol || 'TOKEN',
         fromDecimals: usdcDecimals,
         toDecimals: underlyingDecimals,
-        slippage: 1,
+        slippage: 2, // 2% slippage for 1inch swap
         chainId: (pool as any).chainId || 8453,
       });
 
@@ -511,7 +567,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           amount: investmentAmount,
           fromAddress: address,
           fromDecimals: 6,
-          slippage: 1,
+          slippage: 2, // 2% slippage for 1inch swap
           chainId,
         }),
       });
@@ -613,12 +669,14 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       setTimeout(async () => {
         console.log('✅ Swap confirmed, proceeding with PT/YT purchase...');
 
-        // Use the original investment amount for PT/YT purchase
-        // The swap should have given us approximately this amount of the underlying token
-        const amountForPurchase = parseFloat(investmentAmount);
+        // Apply 2% slippage tolerance to account for swap variance
+        // Use 98% of the original amount to ensure we have enough balance
+        const SLIPPAGE_BUFFER = 0.98; // 2% below submitted amount
+        const amountForPurchase = parseFloat(investmentAmount) * SLIPPAGE_BUFFER;
 
-        safeLog('💰 Proceeding with PT/YT purchase after swap:', {
+        safeLog('💰 Proceeding with PT/YT purchase after swap (with 2% slippage buffer):', {
           originalInput: investmentAmount,
+          slippageBuffer: '2%',
           amountForPurchase,
           tokenSymbol,
         });
@@ -639,17 +697,44 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         showManagedToast({
           type: 'loading',
           title: 'Step 3/3: Purchasing PT/YT',
-          message: `Purchasing PT/YT with swapped ${tokenSymbol}...`,
+          message: `Purchasing PT/YT with swapped ${tokenSymbol} (${amountForPurchase.toFixed(4)})...`,
         });
 
-        // Execute the PT/YT purchase with the original amount
-        // Don't use override - let handleExecute use investmentAmount directly
-        handleExecute();
+        // Execute the PT/YT purchase with slippage-adjusted amount
+        handleExecute(amountForPurchase);
 
         setIsExecutingSwapAndBuy(false);
       }, 2500);
     }
   }, [isSwapConfirmed, isExecutingSwapAndBuy, flowState, swapHash, tokenSymbol, userBalance.formatted]);
+
+  // Handle mint approval confirmation - execute mint after approval
+  React.useEffect(() => {
+    if (isMintSuccess && isWaitingForMintApproval && pendingMintTx) {
+      console.log('✅ Mint approval confirmed! Executing mint in 2 seconds...');
+
+      showToast({
+        type: 'success',
+        title: '✅ Approval Successful!',
+        message: 'Proceeding with minting in 2 seconds...',
+        duration: 2000,
+      });
+
+      // Wait for approval to propagate, then execute mint
+      setTimeout(() => {
+        showToast({
+          type: 'loading',
+          title: 'Step 2/2: Minting PT/YT',
+          message: 'Please confirm the mint transaction...',
+          duration: 0,
+        });
+
+        executeMintTx(pendingMintTx);
+        setPendingMintTx(null);
+        setIsWaitingForMintApproval(false);
+      }, 2000);
+    }
+  }, [isMintSuccess, isWaitingForMintApproval, pendingMintTx, executeMintTx, showToast]);
 
   // Handle approval errors
   React.useEffect(() => {
@@ -894,14 +979,20 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       // To achieve custom ratios, we would need to swap after minting
       // For MVP, we'll mint the total amount which gives equal PT + YT
 
-      safeLog('🔍 [DEBUG] Before parseEther:', {
+      // Get token decimals (USDC = 6, most others = 18)
+      const tokenDecimals = await getTokenDecimals(underlyingToken || tokenSymbol || '', (pool as any).chainId || 8453);
+
+      safeLog('🔍 [DEBUG] Before parseUnits:', {
         amountToUse,
         type: typeof amountToUse,
         isString: typeof amountToUse === 'string',
         value: amountToUse,
+        tokenSymbol,
+        underlyingToken,
+        tokenDecimals,
       });
 
-      const totalAmountWei = parseEther(amountToUse).toString();
+      const totalAmountWei = parseUnits(amountToUse, tokenDecimals).toString();
 
       safeLog('🔍 [DEBUG] Executing mint with amount:', {
         originalInput: investmentAmount,
@@ -910,15 +1001,44 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         isFromSwap: overrideAmount !== undefined,
       });
       
-      await executeMintPy({
+      const mintResult = await executeMintPy({
         chainId: (pool as any).chainId || 8453,
         tokenIn: underlyingToken,
         amountIn: totalAmountWei,
         ptToken,
         ytToken,
         receiver: address,
-        slippage: 0.01,
+        slippage: 0.02, // 2% slippage tolerance
       });
+
+      // Check if approval is needed
+      if (mintResult?.needsApproval && mintResult?.approvals && mintResult?.mintTxData) {
+        console.log('⏳ Approval required before minting...');
+
+        // Store mint tx data for later
+        setPendingMintTx(mintResult.mintTxData);
+        setIsWaitingForMintApproval(true);
+
+        // Show approval toast
+        showToast({
+          type: 'loading',
+          title: 'Step 1/2: Approval Required',
+          message: 'Please approve token spending in your wallet...',
+          duration: 0,
+        });
+
+        // Send approval transaction
+        const approval = mintResult.approvals[0];
+        const approvalTx = {
+          to: approval.token as `0x${string}`,
+          data: `0x095ea7b3${approval.spender.slice(2).padStart(64, '0')}${'f'.repeat(64)}` as `0x${string}`,
+        };
+
+        sendMintApproval(approvalTx);
+        return;
+      }
+
+      // No approval needed or already approved - mint transaction was sent
       
       // TODO: If ratio doesn't match desired ratio, execute swap to adjust
       // For now, minting gives 1:1 ratio, user can swap separately if needed
@@ -1006,7 +1126,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           ytAmount: redeemAmountWei,
           tokenOut: underlyingTokenAddress,
           receiver: address,
-          slippage: 0.01,
+          slippage: 0.02, // 2% slippage tolerance
         });
       } else if (canRedeemSy && redeemAmountFloat <= syBalance.formatted) {
         // Redeem SY
@@ -1042,7 +1162,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           syAmount: redeemAmountWei,
           tokenOut: underlyingTokenAddress,
           receiver: address,
-          slippage: 0.01,
+          slippage: 0.02, // 2% slippage tolerance
         });
       } else {
         showToast({

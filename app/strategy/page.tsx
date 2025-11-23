@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { SimulatorInput, SimulatorOutput } from '@/types';
-import { runSimulation } from '@/lib/utils/simulator';
+import { runSimulation, calculateOptimalAllocation } from '@/lib/utils/simulator';
 import { SimulationResults } from '@/components/simulator/SimulationResults';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -21,6 +21,10 @@ export default function SimulatorPage() {
 
   const [output, setOutput] = useState<SimulatorOutput | null>(null);
   const [hasSimulated, setHasSimulated] = useState(false);
+  const [riskProfile, setRiskProfile] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
+
+  // Calculate optimal allocation whenever inputs change
+  const optimalAllocation = calculateOptimalAllocation(input, riskProfile);
 
   const handleSimulate = () => {
     const result = runSimulation(input);
@@ -214,6 +218,82 @@ export default function SimulatorPage() {
                     Reset
                   </button>
                 )}
+              </div>
+            </div>
+
+            {/* Optimal Allocation Card */}
+            <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-6">
+              <h3 className="font-bold text-purple-900 dark:text-purple-100 mb-3 flex items-center gap-2">
+                <span>🎯</span>
+                <span>Optimal Allocation Strategy</span>
+              </h3>
+
+              {/* Risk Profile Selector */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-purple-800 dark:text-purple-200 mb-2">
+                  Risk Profile
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['conservative', 'moderate', 'aggressive'] as const).map((profile) => (
+                    <button
+                      key={profile}
+                      onClick={() => setRiskProfile(profile)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${
+                        riskProfile === profile
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {profile}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Allocation Display */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                    PT Allocation:
+                  </span>
+                  <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                    {optimalAllocation.ptPercentage}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                    YT Allocation:
+                  </span>
+                  <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                    {optimalAllocation.ytPercentage}%
+                  </span>
+                </div>
+
+                {/* Visual Progress Bar */}
+                <div className="relative h-8 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
+                  <div
+                    className="absolute top-0 left-0 h-full bg-blue-500 flex items-center justify-center text-white text-xs font-semibold"
+                    style={{ width: `${optimalAllocation.ptPercentage}%` }}
+                  >
+                    {optimalAllocation.ptPercentage > 15 && `PT ${optimalAllocation.ptPercentage}%`}
+                  </div>
+                  <div
+                    className="absolute top-0 right-0 h-full bg-purple-500 flex items-center justify-center text-white text-xs font-semibold"
+                    style={{ width: `${optimalAllocation.ytPercentage}%` }}
+                  >
+                    {optimalAllocation.ytPercentage > 15 && `YT ${optimalAllocation.ytPercentage}%`}
+                  </div>
+                </div>
+
+                {/* Strategy Comment */}
+                <p className="text-sm text-purple-700 dark:text-purple-300 italic mt-3">
+                  💡 {optimalAllocation.comment}
+                </p>
+
+                {/* Risk Factor */}
+                <div className="text-xs text-purple-600 dark:text-purple-400 mt-2">
+                  Risk Factor: {(optimalAllocation.riskFactor * 100).toFixed(0)}%
+                </div>
               </div>
             </div>
 

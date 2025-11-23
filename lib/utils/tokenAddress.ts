@@ -86,6 +86,26 @@ export function findTokenAddressBySymbol(
 }
 
 /**
+ * Get token info by address
+ */
+export function getTokenInfoByAddress(
+  address: string,
+  chainId: number = 8453
+): TokenInfo | null {
+  if (!address) return null;
+
+  const normalizedAddress = address.toLowerCase().trim();
+
+  const token = tokenAddresses.find(
+    (t: TokenInfo) =>
+      t.address.toLowerCase() === normalizedAddress &&
+      t.chainId === chainId
+  );
+
+  return token || null;
+}
+
+/**
  * Get all tokens for a specific chain
  */
 export function getTokensByChain(chainId: number): TokenInfo[] {

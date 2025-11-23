@@ -1,4 +1,5 @@
 import type { SimulatorInput, SimulatorOutput } from '@/types';
+import { calculatePTYTAllocation, calculatePTYTWithRisk, type YieldData, type RiskParams } from '@/lib/pendle/strategy';
 
 /**
  * Calculate PT (Principal Token) simulation
@@ -195,4 +196,49 @@ export function getRiskLevel(score: number): {
       description: 'Relatively safe investment with predictable returns.',
     };
   }
+}
+
+/**
+ * Calculate optimal PT/YT allocation using the strategy engine
+ *
+ * @param input Simulator input parameters
+ * @param riskProfile User's risk profile (optional, defaults to 'moderate')
+ * @returns Strategy result with allocation percentages and commentary
+ */
+export function calculateOptimalAllocation(
+  input: SimulatorInput,
+  riskProfile: 'conservative' | 'moderate' | 'aggressive' = 'moderate'
+) {
+  const { expectedAPY, duration } = input;
+
+  // Estimate PT price based on expected yield
+  const yearsToMaturity = duration / 365;
+  const impliedYield = expectedAPY / 100;
+  const ptPrice = 1 / (1 + impliedYield * yearsToMaturity);
+
+  // Use strategy engine to calculate optimal allocation
+  const yieldData: YieldData = {
+    ptPrice,
+    apy7d: expectedAPY / 100, // Current APY
+    apy30d: expectedAPY / 100, // Assume stable APY for simulation
+    maturityDays: duration,
+    sensitivity: 1.5, // Default sensitivity for YT
+  };
+
+  // For enhanced calculation with risk adjustment
+  const riskParams: RiskParams = {
+    maxDrawdown: 0.1, // Assume 10% max drawdown
+    volatility: 0.15, // Assume 15% volatility
+    riskProfile,
+  };
+
+  // Calculate allocation with risk adjustment
+  const strategy = calculatePTYTWithRisk(yieldData, riskParams);
+
+  return {
+    ptPercentage: Math.round(strategy.ptPercentage * 100),
+    ytPercentage: Math.round(strategy.ytPercentage * 100),
+    comment: strategy.comment,
+    riskFactor: strategy.riskFactor ?? 0,
+  };
 }
