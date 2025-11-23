@@ -436,7 +436,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         };
 
         // Only add value if it's greater than 0
-        if (approvalResponse.tx.value && BigInt(approvalResponse.tx.value) > 0n) {
+        if (approvalResponse.tx.value && BigInt(approvalResponse.tx.value) > BigInt(0)) {
           approvalTxParams.value = BigInt(approvalResponse.tx.value);
         }
 
@@ -544,7 +544,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       };
 
       // Only add value if it's greater than 0
-      if (swapTx.value && BigInt(swapTx.value) > 0n) {
+      if (swapTx.value && BigInt(swapTx.value) > BigInt(0)) {
         swapTxParams.value = BigInt(swapTx.value);
       }
 
