@@ -317,7 +317,7 @@ export interface AutoRollConfig {
 export interface SimulatorInput {
   amount: number; // USD amount
   asset: string; // Asset symbol (USDC, sUSDe, etc.)
-  type: 'PT' | 'YT';
+  type: 'PT' | 'YT' | 'BOTH';
   duration: number; // Days
   expectedAPY: number; // Expected APY (%)
   pool?: PendlePool; // Optional: specific pool to simulate

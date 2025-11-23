@@ -242,3 +242,147 @@ export function calculateOptimalAllocation(
     riskFactor: strategy.riskFactor ?? 0,
   };
 }
+
+/**
+ * Time series data point
+ */
+export interface TimeSeriesPoint {
+  day: number;
+  ptValue: number;
+  ytValue: number;
+  totalValue: number;
+  date: string;
+}
+
+/**
+ * Generate time-series data for PT/YT value over time
+ *
+ * @param input Simulator input parameters
+ * @param dataPoints Number of points to generate (default: duration in days)
+ * @returns Array of time-series data points
+ */
+export function generateTimeSeriesData(
+  input: SimulatorInput,
+  dataPoints?: number
+): TimeSeriesPoint[] {
+  const { amount, duration, expectedAPY, type } = input;
+  const points = dataPoints || Math.min(duration, 100); // Cap at 100 points for performance
+  const step = duration / points;
+
+  const series: TimeSeriesPoint[] = [];
+  const startDate = new Date();
+
+  // Calculate initial purchase
+  const yearsToMaturity = duration / 365;
+  const impliedYield = expectedAPY / 100;
+  const ptPrice = 1 / (1 + impliedYield * yearsToMaturity);
+  const ptTokens = amount / ptPrice;
+
+  const dailyYield = (expectedAPY / 100) / 365;
+  const ytPrice = dailyYield * duration;
+  const ytTokens = amount / ytPrice;
+
+  for (let i = 0; i <= points; i++) {
+    const currentDay = Math.floor(i * step);
+    const daysRemaining = duration - currentDay;
+    const yearsRemaining = daysRemaining / 365;
+
+    // PT value calculation
+    let ptValue: number;
+    if (type === 'PT' || type === 'BOTH') {
+      // PT price increases linearly towards 1.0 at maturity
+      const currentPtPrice = yearsRemaining > 0
+        ? 1 / (1 + impliedYield * yearsRemaining)
+        : 1.0;
+      ptValue = ptTokens * currentPtPrice;
+    } else {
+      ptValue = 0;
+    }
+
+    // YT value calculation
+    let ytValue: number;
+    if (type === 'YT' || type === 'BOTH') {
+      // YT accumulates yield over time, value decreases as maturity approaches
+      const accumulatedYield = ytTokens * dailyYield * currentDay;
+      const remainingYield = ytTokens * dailyYield * daysRemaining;
+      ytValue = accumulatedYield + (remainingYield * 0.5); // Simplified model
+    } else {
+      ytValue = 0;
+    }
+
+    const currentDate = new Date(startDate);
+    currentDate.setDate(currentDate.getDate() + currentDay);
+
+    series.push({
+      day: currentDay,
+      ptValue,
+      ytValue,
+      totalValue: ptValue + ytValue,
+      date: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    });
+  }
+
+  return series;
+}
+
+/**
+ * Scenario analysis data point
+ */
+export interface ScenarioPoint {
+  apyChange: number;
+  timePoint: number;
+  value: number;
+  profitLoss: number;
+  profitLossPercent: number;
+}
+
+/**
+ * Generate scenario matrix for APY sensitivity analysis
+ *
+ * @param input Simulator input parameters
+ * @param apySteps Number of APY scenarios to test (default: 11)
+ * @param timeSteps Number of time points to test (default: 5)
+ * @returns 2D array of scenario outcomes
+ */
+export function generateScenarioMatrix(
+  input: SimulatorInput,
+  apySteps: number = 11,
+  timeSteps: number = 5
+): ScenarioPoint[] {
+  const { amount, duration, expectedAPY, type } = input;
+  const scenarios: ScenarioPoint[] = [];
+
+  // APY range: -50% to +50% from expected
+  const apyMin = expectedAPY * 0.5;
+  const apyMax = expectedAPY * 1.5;
+  const apyStep = (apyMax - apyMin) / (apySteps - 1);
+
+  // Time points: 0%, 25%, 50%, 75%, 100% of duration
+  const timePoints = Array.from({ length: timeSteps }, (_, i) =>
+    Math.floor(duration * (i / (timeSteps - 1)))
+  );
+
+  for (let apyIndex = 0; apyIndex < apySteps; apyIndex++) {
+    const testAPY = apyMin + (apyIndex * apyStep);
+    const apyChange = ((testAPY - expectedAPY) / expectedAPY) * 100;
+
+    for (const timePoint of timePoints) {
+      // Simulate with changed APY
+      const testInput = { ...input, expectedAPY: testAPY, duration: timePoint || 1 };
+      const result = runSimulation(testInput);
+
+      const profitLoss = result.futureValue - amount;
+      const profitLossPercent = (profitLoss / amount) * 100;
+
+      scenarios.push({
+        apyChange,
+        timePoint,
+        value: result.futureValue,
+        profitLoss,
+        profitLossPercent,
+      });
+    }
+  }
+
+  return scenarios;
+}

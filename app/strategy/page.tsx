@@ -6,6 +6,9 @@ import { runSimulation, calculateOptimalAllocation } from '@/lib/utils/simulator
 import { SimulationResults } from '@/components/simulator/SimulationResults';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { TimeSeriesChart } from '@/components/simulator/TimeSeriesChart';
+import { ScenarioMatrix } from '@/components/simulator/ScenarioMatrix';
+import { AllocationSlider } from '@/components/simulator/AllocationSlider';
 
 const DURATION_PRESETS = [30, 60, 90, 180];
 const APY_PRESETS = [10, 15, 20, 25, 30];
@@ -331,6 +334,27 @@ export default function SimulatorPage() {
             )}
           </div>
         </div>
+
+        {/* Enhanced Visualizations - Only show after simulation */}
+        {hasSimulated && output && (
+          <div className="mt-8 space-y-8">
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+              Advanced Analysis
+            </h2>
+
+            {/* Time Series Chart */}
+            <TimeSeriesChart input={input} />
+
+            {/* Interactive Allocation Slider */}
+            <AllocationSlider
+              input={input}
+              recommendedPtPercentage={optimalAllocation.ptPercentage}
+            />
+
+            {/* Scenario Matrix */}
+            <ScenarioMatrix input={input} />
+          </div>
+        )}
       </div>
     </div>
   );
