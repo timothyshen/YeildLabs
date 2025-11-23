@@ -48,16 +48,28 @@ export function PageHeader({
               Dashboard
             </Link>
             <Link
+              href="/portfolio"
+              className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Portfolio
+            </Link>
+            <Link
               href="/scanner"
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
             >
               Scanner
             </Link>
             <Link
-              href="/simulator"
+              href="/opportunities"
+              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Opportunities
+            </Link>
+            <Link
+              href="/strategy"
               className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
             >
-              Simulator
+              Strategy
             </Link>
           </>
         )}

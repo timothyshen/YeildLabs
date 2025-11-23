@@ -44,7 +44,19 @@ export default function Home() {
           <a href="/dashboard">
             <FeatureCard
               title="Wallet Dashboard"
-              description="View all your Pendle positions, PnL, and yields in one place"
+              description="Overview of your assets and yields across multiple wallets"
+            />
+          </a>
+          <a href="/portfolio">
+            <FeatureCard
+              title="Portfolio Manager"
+              description="Manage and track all your Pendle PT/YT positions"
+            />
+          </a>
+          <a href="/opportunities">
+            <FeatureCard
+              title="Opportunities"
+              description="Get AI-powered recommendations and discover yield opportunities"
             />
           </a>
           <a href="/scanner">
@@ -53,20 +65,12 @@ export default function Home() {
               description="Find the best PT/YT opportunities across all stablecoin pools"
             />
           </a>
-          <a href="/simulator">
+          <a href="/strategy">
             <FeatureCard
-              title="Yield Simulator"
-              description="Simulate future yields and analyze risk scenarios"
+              title="Strategy Simulator"
+              description="Simulate and analyze different PT/YT yield strategies"
             />
           </a>
-          <FeatureCard
-            title="AI Strategies"
-            description="Get personalized strategy recommendations (Coming Soon)"
-          />
-          <FeatureCard
-            title="One-Click Execution"
-            description="Swap any token → PT/YT in a single transaction (Coming Soon)"
-          />
           <FeatureCard
             title="Auto-Roll"
             description="Automatically roll your PT positions before maturity (Coming Soon)"
