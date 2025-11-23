@@ -124,10 +124,23 @@ export function usePendleMint() {
       }
 
       // Send mint transaction
+      // Safely parse value - handle both string and number formats
+      const txValueSy = txData.tx.value || '0';
+      const parsedValueSy = typeof txValueSy === 'object' && txValueSy !== null && 'toString' in txValueSy
+        ? BigInt((txValueSy as any).toString())
+        : BigInt(txValueSy);
+
+      console.log('🔍 [DEBUG] Mint SY transaction params:', {
+        to: txData.tx.to,
+        value: txValueSy,
+        valueType: typeof txValueSy,
+        parsedValue: parsedValueSy.toString(),
+      });
+
       sendTransaction({
         to: txData.tx.to as Address,
         data: txData.tx.data as `0x${string}`,
-        value: BigInt(txData.tx.value || '0'),
+        value: parsedValueSy,
       });
 
       return {
@@ -164,10 +177,23 @@ export function usePendleMint() {
       }
 
       // Send mint transaction
+      // Safely parse value - handle both string and number formats
+      const txValuePy = txData.tx.value || '0';
+      const parsedValuePy = typeof txValuePy === 'object' && txValuePy !== null && 'toString' in txValuePy
+        ? BigInt((txValuePy as any).toString())
+        : BigInt(txValuePy);
+
+      console.log('🔍 [DEBUG] Mint PT/YT transaction params:', {
+        to: txData.tx.to,
+        value: txValuePy,
+        valueType: typeof txValuePy,
+        parsedValue: parsedValuePy.toString(),
+      });
+
       sendTransaction({
         to: txData.tx.to as Address,
         data: txData.tx.data as `0x${string}`,
-        value: BigInt(txData.tx.value || '0'),
+        value: parsedValuePy,
       });
 
       return {

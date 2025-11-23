@@ -18,6 +18,24 @@ import { SwapPreviewModal } from '@/components/swap/SwapPreviewModal';
 import { BASE_TOKENS } from '@/lib/1inch/config';
 import type { PendlePool } from '@/types';
 
+// Safe logging helper to avoid cross-origin errors
+const safeLog = (message: string, data: any) => {
+  try {
+    // Create a clean copy without circular references or Window objects
+    const cleanData = JSON.parse(JSON.stringify(data, (key, value) => {
+      // Filter out functions and Window objects
+      if (typeof value === 'function' || value instanceof Window) {
+        return '[Filtered]';
+      }
+      return value;
+    }));
+    console.log(message, cleanData);
+  } catch (error) {
+    // If serialization fails, just log the message
+    console.log(message, '[Unable to serialize data]');
+  }
+};
+
 interface EnhancedStrategyCardProps {
   poolName: string;
   maturity: string;
@@ -31,6 +49,7 @@ interface EnhancedStrategyCardProps {
   pool: PendlePool;
   tokenAddress?: string; // Optional: token address from position/recommendation data
   onDetails?: () => void;
+  onSuccess?: () => void; // Callback to refresh data after successful execution
 }
 
 export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
@@ -46,6 +65,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   pool,
   tokenAddress: providedTokenAddress,
   onDetails,
+  onSuccess,
 }) => {
   const { address } = useAccount();
   const { executeMintPy, isLoading: isMintLoading, isSuccess: isMintSuccess, hash: mintHash, error: mintError } = usePendleMint();
@@ -134,11 +154,13 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
 
   // Priority order for token address:
   // 1. Provided token address (from position/recommendation data)
-  // 2. Token address from constants (fetched by symbol)
-  // 3. Pool's underlying asset address (if it's actually an address)
-  const poolTokenAddress = typeof pool.underlyingAsset === 'string'
-    ? pool.underlyingAsset
-    : (pool.underlyingAsset as any)?.address;
+  // 2. underlyingAssetAddress from pool (legacy format)
+  // 3. Token address from constants (fetched by symbol)
+  // 4. Pool's underlying asset address (if it's actually an address)
+  const poolTokenAddress = (pool as any).underlyingAssetAddress ||
+    (typeof pool.underlyingAsset === 'string'
+      ? pool.underlyingAsset
+      : (pool.underlyingAsset as any)?.address);
 
   // Check if poolTokenAddress is actually an address or just a symbol
   const poolTokenAddressIsValid = poolTokenAddress && isAddress(poolTokenAddress);
@@ -158,7 +180,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   // Debug logging
   React.useEffect(() => {
     if (tokenSymbol) {
-      console.log('🔍 [DEBUG] Token address resolution:', {
+      safeLog('🔍 [DEBUG] Token address resolution:', {
         tokenSymbol,
         providedTokenAddress,
         tokenAddressFromConstants,
@@ -179,7 +201,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
 
   // Debug logging
   React.useEffect(() => {
-    console.log('🔍 Balance check debug:', {
+    safeLog('🔍 Balance check debug:', {
       address,
       tokenSymbol,
       poolTokenAddress,
@@ -204,9 +226,10 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
   });
 
   // Get PT, YT, and SY token addresses
-  const ptTokenAddress = typeof (pool as any).ptToken === 'string' ? (pool as any).ptToken : (pool as any).ptToken?.address;
-  const ytTokenAddress = typeof (pool as any).ytToken === 'string' ? (pool as any).ytToken : (pool as any).ytToken?.address;
-  const syTokenAddress = typeof (pool as any).syToken === 'string' ? (pool as any).syToken : (pool as any).syToken?.address;
+  // Try both the unified type (ptToken/ytToken/syToken as Token objects) and legacy type (ptAddress/ytAddress/syAddress as strings)
+  const ptTokenAddress = (pool as any).ptAddress || (typeof (pool as any).ptToken === 'string' ? (pool as any).ptToken : (pool as any).ptToken?.address);
+  const ytTokenAddress = (pool as any).ytAddress || (typeof (pool as any).ytToken === 'string' ? (pool as any).ytToken : (pool as any).ytToken?.address);
+  const syTokenAddress = (pool as any).syAddress || (typeof (pool as any).syToken === 'string' ? (pool as any).syToken : (pool as any).syToken?.address);
 
   // Normalize addresses (remove chainId prefix)
   const normalizePtAddress = ptTokenAddress && ptTokenAddress.includes('-') ? ptTokenAddress.split('-').pop() : ptTokenAddress;
@@ -579,29 +602,40 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
 
       // Wait for balances to update on-chain, then execute PT/YT purchase
       setTimeout(async () => {
-        console.log('✅ Swap confirmed, fetching updated balance...');
+        console.log('✅ Swap confirmed, proceeding with PT/YT purchase...');
 
-        // Wait a bit more for balance to propagate
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Use the original investment amount for PT/YT purchase
+        // The swap should have given us approximately this amount of the underlying token
+        const amountForPurchase = parseFloat(investmentAmount);
 
-        // Use the actual balance received from swap
-        const actualBalance = userBalance.formatted;
-
-        console.log('💰 Using balance from swap:', {
-          actualBalance,
+        safeLog('💰 Proceeding with PT/YT purchase after swap:', {
           originalInput: investmentAmount,
+          amountForPurchase,
           tokenSymbol,
         });
 
-        // Show step 3 toast with actual amount
+        // Validate amount
+        if (isNaN(amountForPurchase) || amountForPurchase <= 0) {
+          showManagedToast({
+            type: 'error',
+            title: 'Invalid Amount',
+            message: `Failed to parse investment amount: ${investmentAmount}`,
+            duration: 5000,
+          });
+          setIsExecutingSwapAndBuy(false);
+          return;
+        }
+
+        // Show step 3 toast
         showManagedToast({
           type: 'loading',
           title: 'Step 3/3: Purchasing PT/YT',
-          message: `Using ${actualBalance.toFixed(4)} ${tokenSymbol} received from swap...`,
+          message: `Purchasing PT/YT with swapped ${tokenSymbol}...`,
         });
 
-        // Execute the PT/YT purchase with ACTUAL received amount
-        handleExecute(actualBalance);
+        // Execute the PT/YT purchase with the original amount
+        // Don't use override - let handleExecute use investmentAmount directly
+        handleExecute();
 
         setIsExecutingSwapAndBuy(false);
       }, 2500);
@@ -679,11 +713,21 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
     // Use override amount if provided (from swap), otherwise use user input
     const amountToUse = overrideAmount !== undefined ? overrideAmount.toString() : investmentAmount;
 
-    if (!amountToUse || parseFloat(amountToUse) <= 0) {
+    // Validate that amountToUse is a valid string/number
+    safeLog('🔍 [DEBUG] Amount validation:', {
+      overrideAmount,
+      investmentAmount,
+      amountToUse,
+      amountType: typeof amountToUse,
+      isString: typeof amountToUse === 'string',
+      parsedFloat: parseFloat(amountToUse),
+    });
+
+    if (!amountToUse || typeof amountToUse !== 'string' || parseFloat(amountToUse) <= 0 || isNaN(parseFloat(amountToUse))) {
       showToast({
         type: 'error',
         title: 'Invalid Amount',
-        message: 'Please enter a valid investment amount',
+        message: `Please enter a valid investment amount. Got: ${typeof amountToUse} = ${amountToUse}`,
       });
       return;
     }
@@ -709,19 +753,21 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       };
       
       if (!underlyingToken || !isAddress(underlyingToken)) {
-        // Try to get from pool
-        const poolUnderlyingAsset = typeof pool.underlyingAsset === 'string'
-          ? pool.underlyingAsset
-          : (pool.underlyingAsset as any)?.address;
-        
-        console.log('🔍 [DEBUG] Getting underlying token address:', {
+        // Try to get from pool - check underlyingAssetAddress first (legacy format)
+        const poolUnderlyingAsset = (pool as any).underlyingAssetAddress ||
+          (typeof pool.underlyingAsset === 'string'
+            ? pool.underlyingAsset
+            : (pool.underlyingAsset as any)?.address);
+
+        safeLog('🔍 [DEBUG] Getting underlying token address:', {
           providedTokenAddress,
           poolUnderlyingAsset,
+          poolUnderlyingAssetAddress: (pool as any).underlyingAssetAddress,
           tokenSymbol,
           isProvidedAddress: providedTokenAddress && isAddress(providedTokenAddress),
           isPoolAddress: poolUnderlyingAsset && isAddress(poolUnderlyingAsset),
         });
-        
+
         if (poolUnderlyingAsset && isAddress(poolUnderlyingAsset)) {
           underlyingToken = poolUnderlyingAsset;
         } else {
@@ -731,7 +777,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
             const { getTokenAddressBySymbol } = await import('@/lib/utils/tokenAddress');
             const lookedUpAddress = getTokenAddressBySymbol(symbolToLookup, (pool as any).chainId || 8453);
             
-            console.log('🔍 [DEBUG] Looked up token address by symbol:', {
+            safeLog('🔍 [DEBUG] Looked up token address by symbol:', {
               symbol: symbolToLookup,
               foundAddress: lookedUpAddress,
               chainId: (pool as any).chainId || 8453,
@@ -778,13 +824,16 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       console.log('✅ [DEBUG] Using underlying token address:', underlyingToken);
 
       // Get PT and YT token addresses
-      let ptToken = typeof (pool as any).ptToken === 'string'
-        ? (pool as any).ptToken
-        : (pool as any).ptToken?.address;
+      // Try both the unified type (ptToken/ytToken as Token objects) and legacy type (ptAddress/ytAddress as strings)
+      let ptToken = (pool as any).ptAddress ||
+        (typeof (pool as any).ptToken === 'string'
+          ? (pool as any).ptToken
+          : (pool as any).ptToken?.address);
 
-      let ytToken = typeof (pool as any).ytToken === 'string'
-        ? (pool as any).ytToken
-        : (pool as any).ytToken?.address;
+      let ytToken = (pool as any).ytAddress ||
+        (typeof (pool as any).ytToken === 'string'
+          ? (pool as any).ytToken
+          : (pool as any).ytToken?.address);
       
       // Normalize PT/YT addresses
       if (ptToken && ptToken.includes('-')) {
@@ -815,7 +864,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         return;
       }
       
-      console.log('🔍 [DEBUG] Executing mint with addresses:', {
+      safeLog('🔍 [DEBUG] Executing mint with addresses:', {
         underlyingToken,
         ptToken,
         ytToken,
@@ -835,11 +884,20 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
       // Note: mintPyFromToken mints both PT and YT in equal amounts (1:1 ratio)
       // To achieve custom ratios, we would need to swap after minting
       // For MVP, we'll mint the total amount which gives equal PT + YT
+
+      safeLog('🔍 [DEBUG] Before parseEther:', {
+        amountToUse,
+        type: typeof amountToUse,
+        isString: typeof amountToUse === 'string',
+        value: amountToUse,
+      });
+
       const totalAmountWei = parseEther(amountToUse).toString();
 
-      console.log('🔍 [DEBUG] Executing mint with amount:', {
+      safeLog('🔍 [DEBUG] Executing mint with amount:', {
         originalInput: investmentAmount,
         actualAmount: amountToUse,
+        totalAmountWei,
         isFromSwap: overrideAmount !== undefined,
       });
       
@@ -917,7 +975,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           return;
         }
 
-        console.log('🔄 Redeeming PT + YT:', {
+        safeLog('🔄 Redeeming PT + YT:', {
           ptToken,
           ytToken,
           amount: redeemAmountWei,
@@ -956,7 +1014,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           return;
         }
 
-        console.log('🔄 Redeeming SY:', {
+        safeLog('🔄 Redeeming SY:', {
           syToken,
           amount: redeemAmountWei,
           outputToken: underlyingTokenAddress,
@@ -1004,7 +1062,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
         showManagedToast({
           type: 'success',
           title: '🎉 All Complete!',
-          message: 'Swap & PT/YT purchase successful!',
+          message: 'Swap & PT/YT purchase successful! Refreshing data...',
           action: {
             label: 'View Transaction',
             onClick: () => {
@@ -1014,16 +1072,21 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
           duration: 7000,
         });
 
-        // Reset flow state after a delay
+        // Reset flow state and refresh data
         setTimeout(() => {
           setFlowState('idle');
-        }, 7000);
+          // Trigger data refresh
+          if (onSuccess) {
+            console.log('🔄 Refreshing recommendations after successful execution...');
+            onSuccess();
+          }
+        }, 3000); // Wait 3 seconds for transaction to settle before refreshing
       } else {
         // Normal mint without swap flow
         showToast({
           type: 'success',
           title: 'Strategy Executed Successfully!',
-          message: `Transaction confirmed. PT + YT tokens minted.`,
+          message: `Transaction confirmed. PT + YT tokens minted. Refreshing data...`,
           action: {
             label: 'View on BaseScan',
             onClick: () => {
@@ -1031,9 +1094,17 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
             },
           },
         });
+
+        // Trigger data refresh after normal execution
+        setTimeout(() => {
+          if (onSuccess) {
+            console.log('🔄 Refreshing recommendations after successful execution...');
+            onSuccess();
+          }
+        }, 3000);
       }
     }
-  }, [isMintSuccess, mintHash, flowState, showToast]);
+  }, [isMintSuccess, mintHash, flowState, showToast, onSuccess]);
 
   React.useEffect(() => {
     if (mintError) {
@@ -1474,7 +1545,7 @@ export const EnhancedStrategyCard: React.FC<EnhancedStrategyCardProps> = ({
                 ? 'bg-red-600 hover:bg-red-700 text-white'
                 : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
-            onClick={canSwapUSDC ? handleSwapAndBuy : handleExecute}
+            onClick={canSwapUSDC ? handleSwapAndBuy : () => handleExecute()}
             disabled={
               !address ||
               !investmentAmount ||

@@ -123,10 +123,9 @@ export default function OpportunitiesPage() {
                     };
                   }).filter((asset: any) => {
                     const balance = parseFloat(asset.balanceFormatted);
-                    const value = parseFloat(asset.valueUSD);
-                    // Filter out assets with zero or negligible balance
-                    // Balance must be > 0 (not just >= 0.0001) and value must be > $0.01
-                    return !isNaN(balance) && !isNaN(value) && balance > 0 && value > 0.01;
+                    // Show in "Your Assets" if user has ANY balance > 0
+                    // Don't filter by USD value - even dust amounts should show
+                    return !isNaN(balance) && balance > 0;
                   });
 
                   if (userAssets.length > 0) {
@@ -582,6 +581,7 @@ export default function OpportunitiesPage() {
                     setPurchasedPositions={setPurchasedPositions}
                     ratioAdjustments={ratioAdjustments}
                     setRatioAdjustments={setRatioAdjustments}
+                    onSuccess={loadRecommendations}
                   />
                 )}
               </>
@@ -720,6 +720,7 @@ function RecommendationResults({
   setPurchasedPositions,
   ratioAdjustments,
   setRatioAdjustments,
+  onSuccess,
 }: any) {
   return (
     <div>
@@ -771,6 +772,7 @@ function RecommendationResults({
                       ratioAdjustments={ratioAdjustments}
                       setRatioAdjustments={setRatioAdjustments}
                       setPurchasedPositions={setPurchasedPositions}
+                      onSuccess={onSuccess}
                     />
                   );
                 })}
@@ -806,6 +808,7 @@ function RecommendationResults({
                       ratioAdjustments={ratioAdjustments}
                       setRatioAdjustments={setRatioAdjustments}
                       setPurchasedPositions={setPurchasedPositions}
+                      onSuccess={onSuccess}
                     />
                   );
                 })}
@@ -828,6 +831,7 @@ function RecommendationCard({
   ratioAdjustments,
   setRatioAdjustments,
   setPurchasedPositions,
+  onSuccess,
 }: any) {
   return (
     <div
@@ -887,6 +891,7 @@ function RecommendationCard({
             apy30d={(pool.apy || 0) / 100}
             pool={pool}
             tokenAddress={tokenAddress}
+            onSuccess={onSuccess}
           />
         );
       })() : (
