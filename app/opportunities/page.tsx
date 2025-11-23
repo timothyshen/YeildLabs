@@ -7,7 +7,6 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { EnhancedStrategyCard } from '@/components/strategy/EnhancedStrategyCard';
-import { NetworkBadge } from '@/components/ui/NetworkBadge';
 import { StatCard } from '@/components/ui/StatCard';
 import { Accordion, AccordionItem } from '@/components/ui/accordion';
 import { PoolCard } from '@/components/scanner/PoolCard';
@@ -255,7 +254,7 @@ export default function OpportunitiesPage() {
     if (!result) return null;
 
     const filterRecommendation = (rec: any) => {
-      const apy = rec.strategy?.expectedAPY || 0;
+      const apy = (rec.strategy?.expectedAPY || 0) / 100;
 
       // APY filter
       if (apy < minAPY || apy > maxAPY) return false;
@@ -337,8 +336,8 @@ export default function OpportunitiesPage() {
     if (pools.length === 0) return { totalTVL: 0, avgAPY: 0, highestAPY: 0 };
 
     const totalTVL = pools.reduce((sum, pool) => sum + pool.tvl, 0);
-    const avgAPY = pools.reduce((sum, pool) => sum + pool.apy, 0) / pools.length;
-    const highestAPY = Math.max(...pools.map(pool => pool.apy));
+    const avgAPY = pools.reduce((sum, pool) => sum + (pool.apy / 100), 0) / pools.length;
+    const highestAPY = Math.max(...pools.map(pool => pool.apy / 100));
 
     return { totalTVL, avgAPY, highestAPY };
   }, [pools]);
@@ -353,14 +352,11 @@ export default function OpportunitiesPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <PageHeader
-            title="Yield Opportunities"
-            subtitle="Discover and invest in Pendle PT/YT strategies"
-            showNavigation={true}
-          />
-          <NetworkBadge />
-        </div>
+        <PageHeader
+          title="Yield Opportunities"
+          subtitle="Discover and invest in Pendle PT/YT strategies"
+          showNavigation={true}
+        />
 
         {/* Tab Navigation */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md mb-6">
@@ -735,7 +731,7 @@ function RecommendationResults({
             </div>
             <div className="text-right">
               <p className="text-xs text-blue-700 dark:text-blue-300">
-                Best APY: {result.bestOverallAPY?.toFixed(2)}%
+                Best APY: {(result.bestOverallAPY / 100)?.toFixed(2)}%
               </p>
             </div>
           </div>
@@ -839,7 +835,7 @@ function RecommendationCard({
             {rec.asset?.symbol}
           </h5>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            {rec.strategy?.recommended} • APY: {rec.strategy?.expectedAPY?.toFixed(2)}%
+            {rec.strategy?.recommended} • APY: {(rec.strategy?.expectedAPY / 100)?.toFixed(2)}%
           </p>
         </div>
         {isPurchased && (
@@ -879,8 +875,8 @@ function RecommendationCard({
             score={75}
             riskFactor={0.3}
             comment={rec.strategy?.reasoning || 'No additional details'}
-            apy7d={pool.apy || 0}
-            apy30d={pool.apy || 0}
+            apy7d={(pool.apy || 0) / 100}
+            apy30d={(pool.apy || 0) / 100}
             pool={pool}
             tokenAddress={tokenAddress}
           />

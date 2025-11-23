@@ -21,7 +21,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
       label: 'Find Best Yield',
       description: 'Scan all stablecoin pools',
       icon: '🔍',
-      href: '/scanner',
+      href: '/opportunities',
       color: 'from-blue-500 to-blue-600',
     },
     {
@@ -35,7 +35,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
       label: 'Simulate Yield',
       description: 'Calculate future returns',
       icon: '📊',
-      href: '/simulator',
+      href: '/strategy',
       color: 'from-purple-500 to-purple-600',
     },
     {
@@ -89,7 +89,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
       <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
         <div className="grid grid-cols-2 gap-3">
           <Link
-            href="/scanner"
+            href="/opportunities"
             className="text-center py-2 px-4 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-750 rounded-lg transition-colors"
           >
             View All Pools

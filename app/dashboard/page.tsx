@@ -94,8 +94,8 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8">
         <PageHeader
-          title="Multi-Wallet Dashboard"
-          subtitle="Manage and track your Pendle yield positions across multiple wallets"
+          title="Dashboard"
+          subtitle="Overview and quick actions for your Pendle yield positions"
         />
 
         {!isConnected ? (
@@ -257,7 +257,7 @@ export default function DashboardPage() {
                           Your Positions
                         </h3>
                         <Link
-                          href="/scanner"
+                          href="/opportunities"
                           className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium"
                         >
                           Find More Opportunities →
@@ -287,10 +287,10 @@ export default function DashboardPage() {
                     <EmptyState
                       icon="📊"
                       title="No Positions Yet"
-                      description="Start earning yield by exploring available pools in the scanner"
+                      description="Start earning yield by exploring available pools and recommendations"
                       action={{
                         label: 'Browse Yield Opportunities',
-                        onClick: () => window.location.href = '/scanner',
+                        onClick: () => window.location.href = '/opportunities',
                         variant: 'primary',
                       }}
                     />

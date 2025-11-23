@@ -26,6 +26,7 @@ export default function PortfolioPage() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [positions, setPositions] = useState<any[]>([]);
+  const [summary, setSummary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +51,9 @@ export default function PortfolioPage() {
       const data = await response.json();
 
       if (data.success) {
-        setPositions(data.data || []);
+        // API returns { summary: {...}, positions: [...] }
+        setPositions(data.data?.positions || []);
+        setSummary(data.data?.summary || null);
       } else {
         setError(data.error || 'Failed to load positions');
       }
@@ -63,62 +66,102 @@ export default function PortfolioPage() {
 
   // Calculate portfolio metrics
   const metrics = useMemo(() => {
-    const totalValue = positions.reduce((sum, p) => sum + (p.totalValueUSD || 0), 0);
-    const totalPnL = positions.reduce((sum, p) => sum + (p.pnl || 0), 0);
+    // Use summary from API if available
+    if (summary) {
+      const maturingSoon = positions.filter(p => {
+        if (p.pool?.maturity) {
+          const daysUntilMaturity = Math.floor((p.pool.maturity * 1000 - Date.now()) / (1000 * 60 * 60 * 24));
+          return daysUntilMaturity <= 30 && daysUntilMaturity > 0;
+        }
+        return false;
+      }).length;
+
+      const avgAPY = positions.length > 0
+        ? positions.reduce((sum, p) => sum + (p.pool?.apy || 0), 0) / positions.length
+        : 0;
+
+      return {
+        totalValue: summary.totalValue || 0,
+        totalPnL: summary.totalPnL || 0,
+        avgAPY,
+        maturingSoon,
+      };
+    }
+
+    // Fallback calculation if no summary
+    if (!Array.isArray(positions)) {
+      return { totalValue: 0, totalPnL: 0, avgAPY: 0, maturingSoon: 0 };
+    }
+
+    const totalValue = positions.reduce((sum, p) => sum + (p.currentValue || 0), 0);
+    const totalPnL = positions.reduce((sum, p) => sum + (p.unrealizedPnL || 0), 0);
     const avgAPY = positions.length > 0
-      ? positions.reduce((sum, p) => sum + (p.apy || 0), 0) / positions.length
+      ? positions.reduce((sum, p) => sum + (p.pool?.apy || 0), 0) / positions.length
       : 0;
 
     const maturingSoon = positions.filter(p => {
-      if (p.maturity) {
-        const daysUntilMaturity = Math.floor((p.maturity * 1000 - Date.now()) / (1000 * 60 * 60 * 24));
+      if (p.pool?.maturity) {
+        const daysUntilMaturity = Math.floor((p.pool.maturity * 1000 - Date.now()) / (1000 * 60 * 60 * 24));
         return daysUntilMaturity <= 30 && daysUntilMaturity > 0;
       }
       return false;
     }).length;
 
     return { totalValue, totalPnL, avgAPY, maturingSoon };
-  }, [positions]);
+  }, [positions, summary]);
 
   // Filter and sort positions
   const filteredPositions = useMemo(() => {
+    if (!Array.isArray(positions)) {
+      return [];
+    }
+
     let filtered = [...positions];
 
     // Apply status filter
     if (filterStatus === 'active') {
-      filtered = filtered.filter(p => p.status === 'active');
+      filtered = filtered.filter(p => !p.pool?.isExpired);
     } else if (filterStatus === 'maturing-soon') {
       filtered = filtered.filter(p => {
-        if (p.maturity) {
-          const daysUntilMaturity = Math.floor((p.maturity * 1000 - Date.now()) / (1000 * 60 * 60 * 24));
+        if (p.pool?.maturity) {
+          const daysUntilMaturity = Math.floor((p.pool.maturity * 1000 - Date.now()) / (1000 * 60 * 60 * 24));
           return daysUntilMaturity <= 30 && daysUntilMaturity > 0;
         }
         return false;
       });
     } else if (filterStatus === 'high-yield') {
-      filtered = filtered.filter(p => (p.apy || 0) >= 15);
+      filtered = filtered.filter(p => (p.pool?.apy || 0) >= 15);
     }
 
     // Apply APY filter
     filtered = filtered.filter(p => {
-      const apy = p.apy || 0;
+      const apy = p.pool?.apy || 0;
       return apy >= minAPY && apy <= maxAPY;
     });
 
-    // Apply position type filter
-    filtered = filtered.filter(p => positionTypes.includes(p.type || 'PT'));
+    // Apply position type filter - check if has PT or YT balance
+    filtered = filtered.filter(p => {
+      const hasPT = (p.ptBalanceFormatted || 0) > 0;
+      const hasYT = (p.ytBalanceFormatted || 0) > 0;
+
+      if (positionTypes.includes('PT') && hasPT) return true;
+      if (positionTypes.includes('YT') && hasYT) return true;
+      if (positionTypes.includes('LP') && hasPT && hasYT) return true;
+
+      return false;
+    });
 
     // Apply sorting
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'value':
-          return (b.totalValueUSD || 0) - (a.totalValueUSD || 0);
+          return (b.currentValue || 0) - (a.currentValue || 0);
         case 'apy':
-          return (b.apy || 0) - (a.apy || 0);
+          return (b.pool?.apy || 0) - (a.pool?.apy || 0);
         case 'maturity':
-          return (a.maturity || 0) - (b.maturity || 0);
+          return (a.pool?.maturity || 0) - (b.pool?.maturity || 0);
         case 'pnl':
-          return (b.pnl || 0) - (a.pnl || 0);
+          return (b.unrealizedPnL || 0) - (a.unrealizedPnL || 0);
         default:
           return 0;
       }
