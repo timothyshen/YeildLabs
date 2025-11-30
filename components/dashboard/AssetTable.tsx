@@ -1,12 +1,59 @@
 'use client';
 
+import React, { memo } from 'react';
 import type { WalletAsset } from '@/types';
+import {
+  getTokenAddress,
+  getTokenSymbol,
+  getBalance,
+} from '@/lib/utils/typeHelpers';
 
 interface AssetTableProps {
   assets: WalletAsset[];
 }
 
-export function AssetTable({ assets }: AssetTableProps) {
+// Memoized row component
+const AssetRow = memo(function AssetRow({
+  asset,
+  formatBalance,
+  formatValue,
+}: {
+  asset: WalletAsset;
+  formatBalance: (balance: number, decimals?: number) => string;
+  formatValue: (value: number) => string;
+}) {
+  const tokenAddress = getTokenAddress(asset);
+  const symbol = getTokenSymbol(asset) || 'TOKEN';
+  const balance = getBalance(asset);
+
+  return (
+    <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm mr-3">
+            {symbol[0]}
+          </div>
+          <div>
+            <div className="text-sm font-medium text-gray-900 dark:text-white">
+              {symbol}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+              {tokenAddress.slice(0, 6)}...{tokenAddress.slice(-4)}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-white font-mono">
+        {formatBalance(balance)}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-gray-900 dark:text-white">
+        {formatValue(asset.valueUSD)}
+      </td>
+    </tr>
+  );
+});
+
+export const AssetTable = memo(function AssetTable({ assets }: AssetTableProps) {
   const formatValue = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -51,34 +98,17 @@ export function AssetTable({ assets }: AssetTableProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {assets.map((asset, index) => (
-              <tr
-                key={asset.token}
-                className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-              >
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm mr-3">
-                      {asset.symbol[0]}
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        {asset.symbol}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                        {asset.token.slice(0, 6)}...{asset.token.slice(-4)}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-white font-mono">
-                  {formatBalance(asset.balance)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-gray-900 dark:text-white">
-                  {formatValue(asset.valueUSD)}
-                </td>
-              </tr>
-            ))}
+            {assets.map((asset, index) => {
+              const key = getTokenAddress(asset) || `asset-${index}`;
+              return (
+                <AssetRow
+                  key={key}
+                  asset={asset}
+                  formatBalance={formatBalance}
+                  formatValue={formatValue}
+                />
+              );
+            })}
           </tbody>
           <tfoot className="bg-gray-50 dark:bg-gray-900">
             <tr>
@@ -95,4 +125,4 @@ export function AssetTable({ assets }: AssetTableProps) {
       </div>
     </div>
   );
-}
+});

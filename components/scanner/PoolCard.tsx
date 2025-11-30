@@ -1,5 +1,6 @@
 'use client';
 
+import React, { memo, useCallback } from 'react';
 import type { PendlePool } from '@/types';
 
 interface PoolCardProps {
@@ -7,7 +8,7 @@ interface PoolCardProps {
   onSelect?: (pool: PendlePool) => void;
 }
 
-export function PoolCard({ pool, onSelect }: PoolCardProps) {
+export const PoolCard = memo(function PoolCard({ pool, onSelect }: PoolCardProps) {
   const formatPercent = (value: number) => {
     return `${value.toFixed(2)}%`;
   };
@@ -109,4 +110,4 @@ export function PoolCard({ pool, onSelect }: PoolCardProps) {
       </div>
     </div>
   );
-}
+});

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import type { WalletAsset, UserPosition } from '@/types';
 import type { OctavPortfolio } from '@/types/octav';
+import { walletLogger as logger } from '@/lib/utils/logger';
 
 export interface ConnectedWallet {
   address: string;
@@ -12,38 +13,33 @@ export interface ConnectedWallet {
   assets: WalletAsset[];
   positions: UserPosition[];
   totalValueUSD: number;
-  portfolio?: OctavPortfolio; // Full Octav portfolio data
+  portfolio?: OctavPortfolio;
 }
 
 export function useMultiWallet() {
   const { address: connectedAddress, isConnected } = useAccount();
   const [wallets, setWallets] = useState<ConnectedWallet[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-
-  // Add connected wallet automatically (only if it's the first one)
-  useEffect(() => {
-    if (isConnected && connectedAddress && wallets.length === 0) {
-      addWallet(connectedAddress, 'Main Wallet');
-    }
-  }, [connectedAddress, isConnected]);
+  const initializedRef = useRef(false);
 
   const addWallet = useCallback(async (address: string, label?: string) => {
-    // Check if wallet already exists
-    const exists = wallets.some(w => w.address.toLowerCase() === address.toLowerCase());
-    if (exists) {
-      // Set as active wallet
-      setWallets(prev =>
-        prev.map(w => ({
+    setWallets(prev => {
+      const exists = prev.some(w => w.address.toLowerCase() === address.toLowerCase());
+      if (exists) {
+        return prev.map(w => ({
           ...w,
           isActive: w.address.toLowerCase() === address.toLowerCase()
-        }))
-      );
-      return;
-    }
+        }));
+      }
+      return prev;
+    });
+
+    // Check if we need to actually add (not just activate)
+    const needsAdd = !wallets.some(w => w.address.toLowerCase() === address.toLowerCase());
+    if (!needsAdd) return;
 
     setIsLoading(true);
     try {
-      // Fetch wallet data (mock for now, will integrate with Octav API)
       const walletData = await fetchWalletData(address);
 
       setWallets(prev => [
@@ -59,11 +55,19 @@ export function useMultiWallet() {
         }
       ]);
     } catch (error) {
-      console.error('Failed to add wallet:', error);
+      logger.error('Failed to add wallet', error);
     } finally {
       setIsLoading(false);
     }
   }, [wallets]);
+
+  // Add connected wallet automatically (only once on initial connection)
+  useEffect(() => {
+    if (isConnected && connectedAddress && !initializedRef.current && wallets.length === 0) {
+      initializedRef.current = true;
+      addWallet(connectedAddress, 'Main Wallet');
+    }
+  }, [connectedAddress, isConnected, wallets.length, addWallet]);
 
   const removeWallet = useCallback((address: string) => {
     setWallets(prev => prev.filter(w => w.address.toLowerCase() !== address.toLowerCase()));
@@ -107,7 +111,7 @@ export function useMultiWallet() {
         )
       );
     } catch (error) {
-      console.error('Failed to refresh wallet:', error);
+      logger.error('Failed to refresh wallet', error);
     } finally {
       setIsLoading(false);
     }
@@ -116,11 +120,29 @@ export function useMultiWallet() {
   const refreshAllWallets = useCallback(async () => {
     setIsLoading(true);
     try {
-      await Promise.all(wallets.map(w => refreshWallet(w.address)));
+      // Get current wallet addresses to avoid stale closure
+      const addresses = wallets.map(w => w.address);
+      await Promise.all(addresses.map(addr => fetchWalletData(addr).then(walletData => {
+        setWallets(prev =>
+          prev.map(w =>
+            w.address.toLowerCase() === addr.toLowerCase()
+              ? {
+                  ...w,
+                  assets: walletData.assets,
+                  positions: walletData.positions,
+                  totalValueUSD: walletData.totalValueUSD,
+                  portfolio: walletData.portfolio,
+                }
+              : w
+          )
+        );
+      })));
+    } catch (error) {
+      logger.error('Failed to refresh all wallets', error);
     } finally {
       setIsLoading(false);
     }
-  }, [wallets, refreshWallet]);
+  }, [wallets]);
 
   const activeWallet = wallets.find(w => w.isActive);
   const totalValueAllWallets = wallets.reduce((sum, w) => sum + w.totalValueUSD, 0);
@@ -164,10 +186,10 @@ async function fetchWalletData(address: string): Promise<{
     }
 
     // If API call failed, fall back to mock data
-    console.warn('Octav API returned unsuccessful response, using mock data');
+    logger.warn('Octav API returned unsuccessful response, using mock data');
     return getMockWalletData();
   } catch (error) {
-    console.error('Failed to fetch wallet data from Octav:', error);
+    logger.error('Failed to fetch wallet data from Octav', error);
     // Fall back to mock data on error
     return getMockWalletData();
   }
